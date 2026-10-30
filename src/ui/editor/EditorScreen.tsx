@@ -5,6 +5,7 @@ import { newImageElement } from '../../core/editorLayout';
 import { PAGE_SIZES } from '../../core/model';
 import type { ItemRef, PageItem } from '../../core/model';
 import Inspector from './Inspector';
+import PageList from './PageList';
 import PageEditor from './PageEditor';
 import { useBookAssets } from './useBookAssets';
 
@@ -34,7 +35,9 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
 
   return (
     <div className="editor-main">
-      <div className="page-list-slot" />
+      <div className="page-list-slot">
+        <PageList book={book} dims={assets.dims} images={assets.images} />
+      </div>
       <PageEditor
         itemRef={ref} item={item} sizeId={book.sizeId} dims={assets.dims} images={assets.images}
         selectedEl={selectedEl} onSelectEl={setSelectedEl}

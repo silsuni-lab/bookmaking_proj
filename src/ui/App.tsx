@@ -4,11 +4,13 @@ import { startAutosave, useBookStore } from '../state/bookStore';
 import BookList from './BookList';
 import BookSetup from './BookSetup';
 import SaveBanner from './SaveBanner';
+import ExportDialog from './ExportDialog';
 import EditorScreen from './editor/EditorScreen';
 
 function EditorView({ onBack }: { onBack(): void }) {
   const book = useBookStore((s) => s.book);
   const [editingInfo, setEditingInfo] = useState(false);
+  const [exporting, setExporting] = useState(false);
   return (
     <div className="editor-screen">
       <SaveBanner />
@@ -20,8 +22,12 @@ function EditorView({ onBack }: { onBack(): void }) {
         <button className="btn" onClick={() => setEditingInfo(true)}>
           책 정보 바꾸기
         </button>
+        <button className="btn primary" onClick={() => setExporting(true)}>
+          PDF 만들기
+        </button>
       </header>
       {book && <EditorScreen key={book.id} bookId={book.id} />}
+      {exporting && book && <ExportDialog book={book} onClose={() => setExporting(false)} />}
       {editingInfo && <BookSetup mode="edit" onClose={() => setEditingInfo(false)} />}
     </div>
   );

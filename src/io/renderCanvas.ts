@@ -9,6 +9,13 @@ function rotateAboutTopLeft(ctx: OffscreenCanvasRenderingContext2D, rect: Rect, 
   ctx.translate(-rect.x, -rect.y);
 }
 
+/** Limits drawing to the rect (in the already-rotated space) so overflowing text lines are hidden. */
+function clipToRect(ctx: OffscreenCanvasRenderingContext2D, r: Rect): void {
+  ctx.beginPath();
+  ctx.rect(r.x, r.y, r.width, r.height);
+  ctx.clip();
+}
+
 function roundedRect(ctx: OffscreenCanvasRenderingContext2D, r: Rect, radius: number): void {
   const rad = Math.min(radius, r.width / 2, r.height / 2);
   ctx.beginPath();
@@ -78,12 +85,14 @@ export async function renderOps(
       }
       case 'band':
         rotateAboutTopLeft(ctx, op.rect, op.rotation);
+        clipToRect(ctx, op.rect);
         ctx.fillStyle = op.color;
         roundedRect(ctx, op.rect, op.radiusMm);
         ctx.fill();
         break;
       case 'text': {
         rotateAboutTopLeft(ctx, op.rect, op.rotation);
+        clipToRect(ctx, op.rect);
         const fontMm = (op.fontSizePt * 25.4) / 72;
         if (typeof document !== 'undefined') {
           await document.fonts.load(`${fontMm * pxPerMm}px ${op.font}`, op.text);
