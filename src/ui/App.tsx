@@ -4,11 +4,13 @@ import { startAutosave, useBookStore } from '../state/bookStore';
 import BookList from './BookList';
 import BookSetup from './BookSetup';
 import SaveBanner from './SaveBanner';
+import CleanupDialog from './cleanup/CleanupDialog';
 
 /** Temporary editor view; later tasks replace it with the real editor. */
 function EditorPlaceholder({ onBack }: { onBack(): void }) {
   const book = useBookStore((s) => s.book);
   const [editingInfo, setEditingInfo] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   return (
     <div className="editor-screen">
       <SaveBanner />
@@ -21,7 +23,11 @@ function EditorPlaceholder({ onBack }: { onBack(): void }) {
           책 정보 바꾸기
         </button>
       </header>
-      <div className="editor-body">편집 화면은 곧 만들어져요.</div>
+      <div className="editor-body">
+        편집 화면은 곧 만들어져요.
+        <button className="btn" onClick={() => setCleaning(true)}>그림 넣기 (시험)</button>
+      </div>
+      {cleaning && book && <CleanupDialog bookId={book.id} role="drawing" onDone={() => setCleaning(false)} onCancel={() => setCleaning(false)} />}
       {editingInfo && <BookSetup mode="edit" onClose={() => setEditingInfo(false)} />}
     </div>
   );

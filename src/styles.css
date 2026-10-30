@@ -59,3 +59,24 @@ h2 { font-size: 30px; }
 }
 .editor-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 24px; }
 .editor-body { padding: 40px 24px; text-align: center; }
+.modal.cleanup { width: 900px; max-height: 94vh; overflow: auto; }
+.steps { display: flex; gap: 18px; list-style: none; margin: 0 0 14px; padding: 0; color: #8a7a64; }
+.steps li.on { color: var(--ink); font-weight: 700; }
+.steps b { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; border-radius: 50%; background: var(--line); }
+.steps li.on b { background: var(--accent); color: #fff; }
+.error { color: var(--danger); font-weight: 700; }
+.cleanup-stage { position: relative; width: 100%; max-width: 640px; margin: 0 auto; touch-action: none; }
+.cleanup-canvas { display: block; width: 100%; max-height: 60vh; object-fit: contain; }
+.cleanup-stage .cleanup-canvas { max-height: none; height: 100%; }
+.cleanup-quad { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.cleanup-quad polygon { fill: rgba(240, 138, 75, 0.15); stroke: var(--accent); stroke-width: 4; vector-effect: non-scaling-stroke; }
+.handle {
+  position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%;
+  background: var(--accent); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--accent-dark); cursor: grab; touch-action: none;
+}
+.cleanup-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+.cleanup-compare figure { margin: 0; }
+.cleanup-compare figcaption { font-weight: 700; margin-bottom: 4px; }
+.checker { background: repeating-conic-gradient(#e6e0d2 0% 25%, #fff 0% 50%) 0 0 / 20px 20px; }
+.paint { cursor: crosshair; touch-action: none; margin: 0 auto; max-width: 100%; }
+.cleanup-pick { padding: 30px 0; text-align: center; }
