@@ -23,16 +23,16 @@ describe('planItem', () => {
   it('text with band: band op directly before text op, shifted by bleed', () => {
     const item = newItem('full');
     const t: TextElement = {
-      id: 't', kind: 'text', x: 10, y: 20, width: 50, height: 20, rotation: 0,
+      id: 't', kind: 'text', x: 10, y: 20, width: 50, height: 20, rotation: 15,
       text: 'hi', fontSizePt: 14, color: '#222222', band: true,
     };
     item.elements.push(t);
     const { ops } = planItem(item, PAGE_SIZES.sq200, {});
     const ti = ops.findIndex((o) => o.op === 'text');
     expect(ops[ti - 1]).toEqual({
-      op: 'band', rect: { x: 13, y: 23, width: 50, height: 20 }, color: 'rgba(255,255,255,0.75)', radiusMm: 2,
+      op: 'band', rect: { x: 13, y: 23, width: 50, height: 20 }, color: 'rgba(255,255,255,0.75)', radiusMm: 2, rotation: 15,
     });
-    expect(ops[ti]).toMatchObject({ op: 'text', rect: { x: 13, y: 23, width: 50, height: 20 }, font: 'Gaegu' });
+    expect(ops[ti]).toMatchObject({ op: 'text', rect: { x: 13, y: 23, width: 50, height: 20 }, font: 'Gaegu', rotation: 15 });
   });
 
   it('image element: whole image, shifted by bleed, skipped if asset unknown', () => {

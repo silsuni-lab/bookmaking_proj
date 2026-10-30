@@ -55,10 +55,6 @@ export async function renderOps(
   if (!ctx) throw new Error('2D context unavailable');
   ctx.scale(pxPerMm, pxPerMm);
 
-  if (typeof document !== 'undefined' && plan.ops.some((o) => o.op === 'text')) {
-    await document.fonts.load('16px Gaegu');
-  }
-
   for (const op of plan.ops) {
     ctx.save();
     switch (op.op) {
@@ -81,6 +77,7 @@ export async function renderOps(
         break;
       }
       case 'band':
+        rotateAboutTopLeft(ctx, op.rect, op.rotation);
         ctx.fillStyle = op.color;
         roundedRect(ctx, op.rect, op.radiusMm);
         ctx.fill();
@@ -88,6 +85,9 @@ export async function renderOps(
       case 'text': {
         rotateAboutTopLeft(ctx, op.rect, op.rotation);
         const fontMm = (op.fontSizePt * 25.4) / 72;
+        if (typeof document !== 'undefined') {
+          await document.fonts.load(`${fontMm * pxPerMm}px ${op.font}`, op.text);
+        }
         ctx.font = `${fontMm}px ${op.font}`;
         ctx.fillStyle = op.color;
         ctx.textAlign = 'center';

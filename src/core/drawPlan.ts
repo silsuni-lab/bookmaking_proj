@@ -7,7 +7,7 @@ import type { Rect } from './geometry';
 export type DrawOp =
   | { op: 'fill'; color: string; rect: Rect }
   | { op: 'image'; assetId: string; src: Rect | null; dest: Rect; rotation: number } // src null = whole image
-  | { op: 'band'; rect: Rect; color: 'rgba(255,255,255,0.75)'; radiusMm: 2 }
+  | { op: 'band'; rect: Rect; color: 'rgba(255,255,255,0.75)'; radiusMm: 2; rotation: number }
   | { op: 'text'; text: string; rect: Rect; fontSizePt: number; color: string; rotation: number; font: 'Gaegu' };
 
 export interface AssetDims {
@@ -55,7 +55,7 @@ export function planItem(
       if (!dims[el.assetId]) continue;
       ops.push({ op: 'image', assetId: el.assetId, src: null, dest: rect, rotation: el.rotation });
     } else {
-      if (el.band) ops.push({ op: 'band', rect: { ...rect }, color: 'rgba(255,255,255,0.75)', radiusMm: 2 });
+      if (el.band) ops.push({ op: 'band', rect: { ...rect }, color: 'rgba(255,255,255,0.75)', radiusMm: 2, rotation: el.rotation });
       ops.push({
         op: 'text', text: el.text, rect, fontSizePt: el.fontSizePt, color: el.color, rotation: el.rotation, font: 'Gaegu',
       });
