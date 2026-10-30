@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newBook } from '../../src/core/model';
-import { assetsOf, closeDb, deleteBook, getAsset, listBooks, loadBook, putAsset, saveBook, type StoredAsset } from '../../src/io/storage';
+import { assetsOf, closeDb, deleteAssetsExcept, deleteBook, getAsset, listBooks, loadBook, putAsset, saveBook, type StoredAsset } from '../../src/io/storage';
 
 function asset(id: string, bookId: string, size = 4): StoredAsset {
   return { id, bookId, kind: 'photo', widthPx: 2, heightPx: 2, blob: new Blob([new Uint8Array(size)], { type: 'image/jpeg' }) };
@@ -59,5 +59,16 @@ describe('storage', () => {
       r.onblocked = () => rej(new Error('blocked'));
     });
     expect(await listBooks()).toEqual([]);
+  });
+
+  it('deleteAssetsExcept removes only this book\'s unlisted assets', async () => {
+    const a = newBook('a5p');
+    const other = newBook('a5p');
+    await putAsset(asset('keep', a.id));
+    await putAsset(asset('drop', a.id));
+    await putAsset(asset('o1', other.id));
+    await deleteAssetsExcept(a.id, new Set(['keep']));
+    expect((await assetsOf(a.id)).map((x) => x.id)).toEqual(['keep']);
+    expect((await assetsOf(other.id)).map((x) => x.id)).toEqual(['o1']);
   });
 });

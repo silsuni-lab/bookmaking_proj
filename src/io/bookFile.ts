@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { newId, type Book, type PageItem } from '../core/model';
+import { newId, referencedAssetIds, type Book, type PageItem } from '../core/model';
 import type { StoredAsset } from './storage';
 
 export class BookFileError extends Error {
@@ -20,7 +20,8 @@ interface ManifestAsset {
 export async function exportBookFile(book: Book, assets: StoredAsset[]): Promise<Blob> {
   const zip = new JSZip();
   zip.file('book.json', JSON.stringify(book));
-  const manifestAssets: ManifestAsset[] = assets.map((a) => {
+  const used = referencedAssetIds(book);
+  const manifestAssets: ManifestAsset[] = assets.filter((a) => used.has(a.id)).map((a) => {
     const file = `assets/${a.id}.${a.kind === 'cutout' ? 'png' : 'jpg'}`;
     zip.file(file, a.blob);
     return { id: a.id, kind: a.kind, widthPx: a.widthPx, heightPx: a.heightPx, file };

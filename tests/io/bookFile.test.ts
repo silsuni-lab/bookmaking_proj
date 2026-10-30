@@ -50,8 +50,18 @@ describe('bookFile', () => {
     await closeDb();
   });
 
+  it('내보내기에는 책이 쓰는 asset만 들어간다', async () => {
+    const { book, assets } = fixture();
+    const zip = await JSZip.loadAsync(await exportBookFile(book, [...assets, mk('old', book.id, 'photo', 5)]));
+    expect(Object.keys(zip.files)).not.toContain('assets/old.jpg');
+    const manifest = JSON.parse(await zip.file('manifest.json')!.async('string')) as { assets: { id: string }[] };
+    expect(manifest.assets.map((a) => a.id).sort()).toEqual(['c1', 'p1']);
+  });
+
   it('export → import 왕복', async () => {
     const book = newBook('a5p', '내 책', '하준');
+    book.cover.back.backgroundAssetId = 'p1';
+    book.cover.back.elements.push({ id: 'e1', kind: 'image', assetId: 'c1', role: 'drawing', x: 0, y: 0, width: 10, height: 10, rotation: 0 });
     const assets = [mk('p1', book.id, 'photo', 10), mk('c1', book.id, 'cutout', 20)];
     const blob = await exportBookFile(book, assets);
     const zip = await JSZip.loadAsync(blob);

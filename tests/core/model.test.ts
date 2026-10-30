@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { PAGE_SIZES, itemCanvasMm, newBook, newItem } from '../../src/core/model';
+import { PAGE_SIZES, itemCanvasMm, newBook, newItem, referencedAssetIds } from '../../src/core/model';
 
 describe('model', () => {
   test('page sizes', () => {
@@ -17,5 +17,19 @@ describe('model', () => {
     expect(b.cover.back.layout).toBe('full');
     expect(b.items).toEqual([]);
     expect(b.cover.front.elements.map(e => e.kind === 'text' && e.text)).toEqual(['우리 공원', '글·그림 하린']);
+  });
+});
+
+describe('referencedAssetIds', () => {
+  test('collects background and image-element asset ids from covers and items', () => {
+    const book = newBook('sq200', 't', 'c');
+    book.cover.front.backgroundAssetId = 'f';
+    const it1 = newItem('full');
+    it1.backgroundAssetId = 'bg';
+    it1.elements.push({ id: 'e', kind: 'image', assetId: 'cut', role: 'drawing', x: 0, y: 0, width: 1, height: 1, rotation: 0 });
+    const it2 = newItem('blank');
+    book.items.push(it1, it2);
+    book.cover.back.elements.push({ id: 'h', kind: 'image', assetId: 'hw', role: 'handwriting', x: 0, y: 0, width: 1, height: 1, rotation: 0 });
+    expect([...referencedAssetIds(book)].sort()).toEqual(['bg', 'cut', 'f', 'hw']);
   });
 });

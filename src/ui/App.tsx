@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { Book } from '../core/model';
+import { referencedAssetIds, type Book } from '../core/model';
+import { deleteAssetsExcept } from '../io/storage';
 import { startAutosave, useBookStore } from '../state/bookStore';
 import BookList from './BookList';
 import BookSetup from './BookSetup';
@@ -41,10 +42,16 @@ export default function App() {
     return startAutosave(); // cleanup flushes pending saves
   }, [view]);
 
-  const openBook = (book: Book) => {
+  const openBook = async (book: Book) => {
+    // Undo history starts empty on open, so assets the book no longer references can never come back.
+    try {
+      await deleteAssetsExcept(book.id, referencedAssetIds(book));
+    } catch (e) {
+      console.error(e);
+    }
     useBookStore.getState().open(book);
     setView('editor');
   };
 
-  return view === 'list' ? <BookList onOpen={openBook} /> : <EditorView onBack={() => setView('list')} />;
+  return view === 'list' ? <BookList onOpen={(b) => void openBook(b)} /> : <EditorView onBack={() => setView('list')} />;
 }

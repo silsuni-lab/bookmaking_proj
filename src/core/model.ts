@@ -79,6 +79,16 @@ export function newItem(layout: LayoutKind): PageItem {
   return { id: newId(), layout, backgroundAssetId: null, photoSide: 'left', elements: [] };
 }
 
+/** Ids of every asset the book uses (backgrounds and image elements of covers and pages). */
+export function referencedAssetIds(book: Book): Set<string> {
+  const ids = new Set<string>();
+  for (const item of [book.cover.front, book.cover.back, ...book.items]) {
+    if (item.backgroundAssetId) ids.add(item.backgroundAssetId);
+    for (const e of item.elements) if (e.kind === 'image') ids.add(e.assetId);
+  }
+  return ids;
+}
+
 export function itemCanvasMm(item: PageItem, size: PageSize): { widthMm: number; heightMm: number } {
   return {
     widthMm: item.layout === 'spread' ? size.widthMm * 2 : size.widthMm,

@@ -64,3 +64,10 @@ export async function getAsset(id: string): Promise<StoredAsset | undefined> {
 export async function assetsOf(bookId: string): Promise<StoredAsset[]> {
   return (await db()).getAllFromIndex('assets', 'bookId', bookId);
 }
+
+/** Deletes the book's assets whose id is not in keep (e.g. replaced backgrounds, deleted drawings). */
+export async function deleteAssetsExcept(bookId: string, keep: ReadonlySet<string>): Promise<void> {
+  const tx = (await db()).transaction('assets', 'readwrite');
+  const keys = await tx.store.index('bookId').getAllKeys(bookId);
+  await Promise.all([...keys.filter((k) => !keep.has(k)).map((k) => tx.store.delete(k)), tx.done]);
+}
