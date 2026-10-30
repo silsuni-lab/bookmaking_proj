@@ -133,7 +133,7 @@ export const useBookStore = create<BookState>()(
         },
       };
     },
-    { partialize: (s) => ({ book: s.book }), limit: 50 },
+    { partialize: (s) => ({ book: s.book }), equality: (a, b) => a.book === b.book, limit: 50 },
   ),
 );
 
