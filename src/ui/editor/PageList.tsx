@@ -4,7 +4,7 @@ import { PAGE_SIZES } from '../../core/model';
 import type { Book, ItemRef, PageItem, PageSizeId } from '../../core/model';
 import { planItem } from '../../core/drawPlan';
 import type { AssetDims } from '../../core/drawPlan';
-import { misalignedSpreads, paginate } from '../../core/pagination';
+import { buildRows } from './pageRows';
 import { renderOps } from '../../io/renderCanvas';
 
 const THUMB_PX_PER_MM = 0.5;
@@ -50,38 +50,6 @@ const Thumb = memo(function Thumb({ item, sizeId, dims, images }: ThumbProps) {
 
   return <canvas ref={canvasRef} className="thumb-canvas" style={{ aspectRatio: String(aspect) }} />;
 });
-
-type Cell = { item: PageItem; label: string } | null;
-type Row = { kind: 'pair'; left: Cell; right: Cell } | { kind: 'spread'; cell: NonNullable<Cell>; misaligned: boolean };
-
-/** Rows of two pages (left | right); page 1 sits alone on the right of the first row. */
-function buildRows(items: PageItem[]): Row[] {
-  const byId = new Map(items.map((i) => [i.id, i]));
-  const bad = new Set(misalignedSpreads(items));
-  const rows: Row[] = [];
-  const done = new Set<string>();
-  for (const slot of paginate(items)) {
-    if (!slot.itemId || done.has(slot.itemId)) continue;
-    const item = byId.get(slot.itemId) as PageItem;
-    if (item.layout === 'spread') {
-      done.add(item.id);
-      rows.push({ kind: 'spread', cell: { item, label: `${slot.pageNumber}~${slot.pageNumber + 1}쪽` }, misaligned: bad.has(item.id) });
-      continue;
-    }
-    const cell = { item, label: `${slot.pageNumber}쪽` };
-    const last = rows[rows.length - 1];
-    if (slot.side === 'right') {
-      if (last && last.kind === 'pair' && last.right === null && last.left) {
-        last.right = cell;
-      } else {
-        rows.push({ kind: 'pair', left: null, right: cell });
-      }
-    } else {
-      rows.push({ kind: 'pair', left: cell, right: null });
-    }
-  }
-  return rows;
-}
 
 interface Props {
   book: Book;
@@ -129,6 +97,7 @@ export default function PageList({ book, dims, images }: Props) {
         draggable={interior}
         onClick={() => select(ref)}
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return; // let the inner delete button handle its own keys
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             select(ref);
@@ -168,7 +137,7 @@ export default function PageList({ book, dims, images }: Props) {
         {thumb(book.cover.back, { kind: 'cover', which: 'back' }, '뒤표지')}
       </div>
       <div className="page-list-rows">
-        {rows.map((row, n) =>
+        {rows.map((row) =>
           row.kind === 'spread' ? (
             <div key={row.cell.item.id} className="thumb-spread-wrap">
               {thumb(row.cell.item, { kind: 'item', id: row.cell.item.id }, row.cell.label, row.misaligned ? 'misaligned' : undefined)}
@@ -179,7 +148,7 @@ export default function PageList({ book, dims, images }: Props) {
               )}
             </div>
           ) : (
-            <div key={n} className="thumb-row">
+            <div key={`${row.left?.item.id ?? '-'}:${row.right?.item.id ?? '-'}`} className="thumb-row">
               {row.left ? thumb(row.left.item, { kind: 'item', id: row.left.item.id }, row.left.label) : <div className="thumb-empty" />}
               {row.right ? thumb(row.right.item, { kind: 'item', id: row.right.item.id }, row.right.label) : <div className="thumb-empty" />}
             </div>
