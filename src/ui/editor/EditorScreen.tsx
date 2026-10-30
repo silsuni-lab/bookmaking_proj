@@ -31,13 +31,17 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
   useEffect(() => setSelectedEl(null), [refKey]);
 
   const item = book ? findItem(book, ref) : undefined;
-  if (!book || !item) return <div className="editor-main"><div className="page-list-slot" /></div>;
+  if (!book) return <div className="editor-main"><div className="page-list-slot" /></div>;
+  const pageList = (
+    <div className="page-list-slot">
+      <PageList book={book} dims={assets.dims} images={assets.images} />
+    </div>
+  );
+  if (!item) return <div className="editor-main">{pageList}</div>;
 
   return (
     <div className="editor-main">
-      <div className="page-list-slot">
-        <PageList book={book} dims={assets.dims} images={assets.images} />
-      </div>
+      {pageList}
       <PageEditor
         itemRef={ref} item={item} sizeId={book.sizeId} dims={assets.dims} images={assets.images}
         selectedEl={selectedEl} onSelectEl={setSelectedEl}

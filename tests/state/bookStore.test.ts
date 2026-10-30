@@ -31,6 +31,17 @@ describe('edits and undo', () => {
     expect(s().book!.items).toHaveLength(0);
   });
 
+  it('undo of an added, selected page falls back to the front cover', () => {
+    const keep = s().addItem('full');
+    const id = s().addItem('full');
+    useBookStore.setState({ selected: { kind: 'item', id } });
+    undo();
+    expect(s().selected).toEqual({ kind: 'cover', which: 'front' });
+    useBookStore.setState({ selected: { kind: 'item', id: keep } });
+    useBookStore.temporal.getState().redo();
+    expect(s().selected).toEqual({ kind: 'item', id: keep });
+  });
+
   it('open is not undoable', () => {
     s().addItem('full');
     s().open(newBook('a5p'));

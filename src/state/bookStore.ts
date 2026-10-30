@@ -137,6 +137,14 @@ export const useBookStore = create<BookState>()(
   ),
 );
 
+// Undo/redo (or any edit) can remove the selected page; fall back to the front cover so the editor never goes blank.
+useBookStore.subscribe((state) => {
+  const { book, selected } = state;
+  if (book && selected?.kind === 'item' && !book.items.some((i) => i.id === selected.id)) {
+    useBookStore.setState({ selected: { kind: 'cover', which: 'front' } });
+  }
+});
+
 export function startAutosave(
   save: (b: Book) => Promise<void> = saveBook,
   delayMs = 1000,
