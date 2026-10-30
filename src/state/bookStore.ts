@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 import { fixAlignment, misalignedSpreads } from '../core/pagination';
-import { newItem } from '../core/model';
+import { coverTextBoxes, newItem, PAGE_SIZES } from '../core/model';
 import type { Book, ItemRef, LayoutKind, PageElement, PageItem } from '../core/model';
 import { saveBook } from '../io/storage';
 
@@ -83,7 +83,28 @@ export const useBookStore = create<BookState>()(
               syncFront(`글·그림 ${b.childName}`, `글·그림 ${p.childName}`);
               next.childName = p.childName;
             }
-            if (p.sizeId !== undefined && b.items.length === 0) next.sizeId = p.sizeId;
+            if (p.sizeId !== undefined && p.sizeId !== b.sizeId && b.items.length === 0) {
+              next.sizeId = p.sizeId;
+              // the automatic title/byline follow the new page size (same rule as newBook)
+              const boxes = coverTextBoxes(PAGE_SIZES[p.sizeId]);
+              const front = next.cover.front;
+              const byline = `글·그림 ${next.childName}`;
+              next = {
+                ...next,
+                cover: {
+                  ...next.cover,
+                  front: {
+                    ...front,
+                    elements: front.elements.map((e) =>
+                      e.kind !== 'text' ? e
+                        : e.text === next.title ? { ...e, ...boxes.title }
+                        : e.text === byline ? { ...e, ...boxes.byline }
+                        : e,
+                    ),
+                  },
+                },
+              };
+            }
             return next;
           });
         },

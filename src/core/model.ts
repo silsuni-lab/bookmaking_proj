@@ -107,14 +107,24 @@ function textElement(
   return { id: newId(), kind: 'text', x, y, width, height, rotation: 0, text, fontSizePt, color: '#222222', band: false };
 }
 
+type Box = Pick<TextElement, 'x' | 'y' | 'width' | 'height'>;
+
+/** Where the automatic front-cover title and byline sit (mm) for a page size. */
+export function coverTextBoxes(size: PageSize): { title: Box; byline: Box } {
+  const width = size.widthMm * 0.8;
+  const x = (size.widthMm - width) / 2;
+  return {
+    title: { x, y: size.heightMm * 0.12, width, height: size.heightMm * 0.15 },
+    byline: { x, y: size.heightMm * 0.3, width, height: size.heightMm * 0.07 },
+  };
+}
+
 export function newBook(sizeId: PageSizeId, title = '', childName = ''): Book {
-  const size = PAGE_SIZES[sizeId];
-  const w = size.widthMm * 0.8;
-  const x = (size.widthMm - w) / 2;
+  const { title: t, byline: b } = coverTextBoxes(PAGE_SIZES[sizeId]);
   const front = newItem('full');
   front.elements.push(
-    textElement(title, 28, x, size.heightMm * 0.12, w, size.heightMm * 0.15),
-    textElement(`글·그림 ${childName}`, 14, x, size.heightMm * 0.3, w, size.heightMm * 0.07),
+    textElement(title, 28, t.x, t.y, t.width, t.height),
+    textElement(`글·그림 ${childName}`, 14, b.x, b.y, b.width, b.height),
   );
   return {
     id: newId(),

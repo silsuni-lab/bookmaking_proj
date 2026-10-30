@@ -116,6 +116,26 @@ describe('setMeta', () => {
     expect(s().book!.title).toBe('또 변경');
   });
 
+  it('sizeId change re-lays out the auto cover title and byline like newBook', () => {
+    s().setMeta({ sizeId: 'a5l', title: '새 제목' });
+    const geom = (e: TextElement) => [e.x, e.y, e.width, e.height];
+    const want = newBook('a5l', '새 제목', '하나').cover.front.elements as TextElement[];
+    const got = s().book!.cover.front.elements as TextElement[];
+    expect(got.map((e) => e.text)).toEqual(['새 제목', '글·그림 하나']);
+    expect(got.map(geom)).toEqual(want.map(geom));
+  });
+
+  it('sizeId change leaves user-written cover text where it is', () => {
+    const t = s().book!.cover.front.elements[0] as TextElement;
+    s().updateElement({ kind: 'cover', which: 'front' }, t.id, { text: '내가 쓴 것' });
+    s().setMeta({ sizeId: 'a5l' });
+    expect(geom0()).toEqual([t.x, t.y, t.width, t.height]);
+    function geom0() {
+      const e = s().book!.cover.front.elements[0] as TextElement;
+      return [e.x, e.y, e.width, e.height];
+    }
+  });
+
   it('sizeId only when no items', () => {
     s().setMeta({ sizeId: 'a5p' });
     expect(s().book!.sizeId).toBe('a5p');
