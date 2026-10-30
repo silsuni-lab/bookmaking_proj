@@ -39,6 +39,18 @@ function maxAlpha(img: RawImage): number {
 }
 
 describe('removePaper', () => {
+  test('pixels below the alpha threshold are fully transparent (no grey haze)', () => {
+    const img = fill(64, 64, [245, 242, 235]);
+    for (let x = 0; x < 64; x++) paint(img, { x, y: 0, width: 1, height: 64 }, [245 - x, 242 - x, 235 - x]);
+    const out = removePaper(img, 0.5).image;
+    let haze = 0;
+    for (let i = 0; i < out.data.length; i += 4) {
+      const a = out.data[i + 3];
+      if (a > 0 && a / 255 < 0.02) haze++;
+    }
+    expect(haze).toBe(0);
+  });
+
   test('plain paper becomes transparent', () => {
     const r = removePaper(fill(64, 64, [243, 234, 210]), 0.5);
     expect(maxAlpha(r.image)).toBeLessThan(10);

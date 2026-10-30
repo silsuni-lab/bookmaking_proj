@@ -121,7 +121,8 @@ export function removePaper(src: RawImage, strength: number): PaperResult {
       }
       norm[o + 3] = 255;
       const a = smoothstep(t0, t1, ink);
-      out[o + 3] = Math.round(a * 255);
+      // below the threshold the pixel is fully transparent (RGB stays 0), so no faint dark haze remains
+      out[o + 3] = a >= 0.02 ? Math.round(a * 255) : 0;
       if (a >= 0.02) {
         const off = (1 - a) * 255;
         for (let c = 0; c < 3; c++) out[o + c] = (norm[o + c] - off) / a;
