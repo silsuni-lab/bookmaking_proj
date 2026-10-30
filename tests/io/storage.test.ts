@@ -1,18 +1,19 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { newBook } from '../../src/core/model';
-import { assetsOf, deleteBook, getAsset, listBooks, loadBook, putAsset, saveBook, type StoredAsset } from '../../src/io/storage';
+import { assetsOf, closeDb, deleteBook, getAsset, listBooks, loadBook, putAsset, saveBook, type StoredAsset } from '../../src/io/storage';
 
 function asset(id: string, bookId: string, size = 4): StoredAsset {
   return { id, bookId, kind: 'photo', widthPx: 2, heightPx: 2, blob: new Blob([new Uint8Array(size)], { type: 'image/jpeg' }) };
 }
 
 beforeEach(async () => {
+  await closeDb();
   await new Promise<void>((res, rej) => {
     const r = indexedDB.deleteDatabase('kids-book-maker');
     r.onsuccess = () => res();
     r.onerror = () => rej(r.error);
-    r.onblocked = () => res();
+    r.onblocked = () => rej(new Error('deleteDatabase blocked'));
   });
 });
 
@@ -45,5 +46,18 @@ describe('storage', () => {
     expect(await loadBook(a.id)).toBeUndefined();
     expect(await assetsOf(a.id)).toEqual([]);
     expect((await assetsOf(other.id)).length).toBe(1);
+  });
+
+  it('DB 초기화가 실제로 데이터를 지운다', async () => {
+    await saveBook(newBook('a5p'));
+    expect((await listBooks()).length).toBe(1);
+    await closeDb();
+    await new Promise<void>((res, rej) => {
+      const r = indexedDB.deleteDatabase('kids-book-maker');
+      r.onsuccess = () => res();
+      r.onerror = () => rej(r.error);
+      r.onblocked = () => rej(new Error('blocked'));
+    });
+    expect(await listBooks()).toEqual([]);
   });
 });

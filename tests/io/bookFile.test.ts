@@ -1,15 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
-import { newBook } from '../../src/core/model';
+import { newBook, newItem, type ImageElement } from '../../src/core/model';
 import { BookFileError, exportBookFile, importBookFile } from '../../src/io/bookFile';
-import type { StoredAsset } from '../../src/io/storage';
+import { assetsOf, closeDb, putAsset, saveBook, type StoredAsset } from '../../src/io/storage';
+import 'fake-indexeddb/auto';
 
 const mk = (id: string, bookId: string, kind: 'photo' | 'cutout', size: number): StoredAsset => ({
   id, bookId, kind, widthPx: 3, heightPx: 5,
   blob: new Blob([new Uint8Array(size).fill(7)], { type: kind === 'photo' ? 'image/jpeg' : 'image/png' }),
 });
 
+function fixture() {
+  const book = newBook('a5p', '내 책', '하준');
+  const img: ImageElement = { id: 'e1', kind: 'image', assetId: 'c1', role: 'drawing', x: 0, y: 0, width: 10, height: 10, rotation: 0 };
+  const item = newItem('full');
+  item.backgroundAssetId = 'p1';
+  item.elements.push(img);
+  book.items.push(item);
+  book.cover.front.backgroundAssetId = 'p1';
+  const assets = [mk('p1', book.id, 'photo', 10), mk('c1', book.id, 'cutout', 20)];
+  return { book, assets };
+}
+
 describe('bookFile', () => {
+  it('가져오면 asset id가 새로 부여되고 참조가 모두 갱신된다', async () => {
+    const { book, assets } = fixture();
+    const out = await importBookFile(await exportBookFile(book, assets));
+    const ids = new Set(out.assets.map((a) => a.id));
+    expect(out.assets.length).toBe(2);
+    for (const a of out.assets) expect(['p1', 'c1']).not.toContain(a.id);
+    const all = [out.book.cover.front, out.book.cover.back, ...out.book.items];
+    const refs = all.flatMap((i) => [i.backgroundAssetId, ...i.elements.map((e) => (e.kind === 'image' ? e.assetId : null))]).filter((x): x is string => !!x);
+    expect(refs.length).toBe(3);
+    for (const r of refs) expect(ids.has(r)).toBe(true);
+  });
+
+  it('두 번 가져와도 원본 책의 asset이 바뀌지 않는다', async () => {
+    const { book, assets } = fixture();
+    await saveBook(book);
+    for (const a of assets) await putAsset(a);
+    const blob = await exportBookFile(book, assets);
+    for (let i = 0; i < 2; i++) {
+      const out = await importBookFile(blob);
+      for (const a of out.assets) await putAsset(a);
+    }
+    const kept = await assetsOf(book.id);
+    expect(kept.map((a) => a.id).sort()).toEqual(['c1', 'p1']);
+    expect(kept.find((a) => a.id === 'c1')!.blob.size).toBe(20);
+    await closeDb();
+  });
+
   it('export → import 왕복', async () => {
     const book = newBook('a5p', '내 책', '하준');
     const assets = [mk('p1', book.id, 'photo', 10), mk('c1', book.id, 'cutout', 20)];
@@ -20,11 +60,10 @@ describe('bookFile', () => {
     expect(out.book.title).toBe('내 책');
     expect(out.book.items).toEqual(book.items);
     expect(out.book.id).not.toBe(book.id);
-    expect(out.assets.map((a) => a.id).sort()).toEqual(['c1', 'p1']);
+    expect(out.assets.length).toBe(2);
     for (const a of out.assets) expect(a.bookId).toBe(out.book.id);
-    const sizes = Object.fromEntries(out.assets.map((a) => [a.id, a.blob.size]));
-    expect(sizes).toEqual({ p1: 10, c1: 20 });
-    const c1 = out.assets.find((a) => a.id === 'c1')!;
+    expect(out.assets.map((a) => a.blob.size).sort()).toEqual([10, 20]);
+    const c1 = out.assets.find((a) => a.kind === 'cutout')!;
     expect(c1.kind).toBe('cutout');
     expect([c1.widthPx, c1.heightPx]).toEqual([3, 5]);
   });

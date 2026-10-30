@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { newId, type Book } from '../core/model';
+import { newId, type Book, type PageItem } from '../core/model';
 import type { StoredAsset } from './storage';
 
 export class BookFileError extends Error {
@@ -40,12 +40,21 @@ export async function importBookFile(file: Blob): Promise<{ book: Book; assets: 
     const parsed = JSON.parse(await bookEntry.async('string')) as Book;
     const book: Book = { ...parsed, id: newId() };
     const assets: StoredAsset[] = [];
+    const idMap = new Map<string, string>();
+    for (const m of manifest.assets) idMap.set(m.id, newId());
+    const remap = (item: PageItem): PageItem => ({
+      ...item,
+      backgroundAssetId: item.backgroundAssetId ? (idMap.get(item.backgroundAssetId) ?? item.backgroundAssetId) : null,
+      elements: item.elements.map((el) => (el.kind === 'image' ? { ...el, assetId: idMap.get(el.assetId) ?? el.assetId } : el)),
+    });
+    book.cover = { front: remap(book.cover.front), back: remap(book.cover.back) };
+    book.items = book.items.map(remap);
     for (const m of manifest.assets) {
       const entry = zip.file(m.file);
       if (!entry) throw new BookFileError();
       const type = m.kind === 'cutout' ? 'image/png' : 'image/jpeg';
       const blob = new Blob([await entry.async('arraybuffer')], { type });
-      assets.push({ id: m.id, kind: m.kind, widthPx: m.widthPx, heightPx: m.heightPx, blob, bookId: book.id });
+      assets.push({ id: idMap.get(m.id)!, kind: m.kind, widthPx: m.widthPx, heightPx: m.heightPx, blob, bookId: book.id });
     }
     return { book, assets };
   } catch (e) {

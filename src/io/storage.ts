@@ -14,12 +14,21 @@ let dbPromise: Promise<IDBPDatabase<KidsDB>> | null = null;
 
 function db(): Promise<IDBPDatabase<KidsDB>> {
   dbPromise ??= openDB<KidsDB>('kids-book-maker', 1, {
+    blocking() {
+      void closeDb();
+    },
     upgrade(d) {
       d.createObjectStore('books', { keyPath: 'id' });
       d.createObjectStore('assets', { keyPath: 'id' }).createIndex('bookId', 'bookId');
     },
   });
   return dbPromise;
+}
+
+export async function closeDb(): Promise<void> {
+  const p = dbPromise;
+  dbPromise = null;
+  if (p) (await p).close();
 }
 
 export async function listBooks(): Promise<Pick<Book, 'id' | 'title' | 'childName' | 'updatedAt'>[]> {
