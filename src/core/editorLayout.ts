@@ -8,11 +8,19 @@ export function fitScale(availW: number, availH: number, canvasWmm: number, canv
   return Number.isFinite(s) && s > 0 ? s : 1;
 }
 
-/** Trim-origin area (mm) where new elements are placed: the whole canvas, or the photo side of a spread. */
-export function placementArea(item: PageItem, size: PageSize): { x: number; y: number; width: number; height: number } {
+/**
+ * Trim-origin area (mm) where new elements are placed: the whole canvas, or on a spread
+ * the photo side (drawings) or the cream text side (text, handwriting).
+ */
+export function placementArea(
+  item: PageItem,
+  size: PageSize,
+  side: 'photo' | 'text' = 'photo',
+): { x: number; y: number; width: number; height: number } {
   const c = itemCanvasMm(item, size);
   if (item.layout === 'spread') {
-    return { x: item.photoSide === 'left' ? 0 : size.widthMm, y: 0, width: size.widthMm, height: c.heightMm };
+    const left = (item.photoSide === 'left') === (side === 'photo');
+    return { x: left ? 0 : size.widthMm, y: 0, width: size.widthMm, height: c.heightMm };
   }
   return { x: 0, y: 0, width: c.widthMm, height: c.heightMm };
 }
@@ -27,7 +35,7 @@ export function newImageElement(
   role: 'drawing' | 'handwriting',
   aspect: number,
 ): ImageElement {
-  const a = placementArea(item, size);
+  const a = placementArea(item, size, role === 'drawing' ? 'photo' : 'text');
   const widthFrac = role === 'drawing' ? 0.5 : 0.8;
   let width = a.width * widthFrac;
   let height = width / aspect;
@@ -42,7 +50,7 @@ export function newImageElement(
 
 /** Text: bottom centre, 80% of the area width. */
 export function newTextElement(item: PageItem, size: PageSize): TextElement {
-  const a = placementArea(item, size);
+  const a = placementArea(item, size, 'text');
   const width = a.width * 0.8;
   const height = a.height * 0.15;
   return {
