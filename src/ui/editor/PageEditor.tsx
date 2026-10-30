@@ -144,6 +144,7 @@ export default function PageEditor({ itemRef, item, sizeId, dims, images, select
           <Transformer
             ref={trRef}
             rotateEnabled
+            flipEnabled={false}
             keepRatio
             rotationSnaps={[0, 90, 180, 270]}
             anchorSize={10}
