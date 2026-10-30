@@ -142,25 +142,50 @@ export function startAutosave(
   delayMs = 1000,
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let pending: Book | null = null; // latest edited book awaiting its debounced save
+  let seq = 0; // bumped on every new edit or book switch; only the latest save may set status
+
+  const run = (book: Book, mySeq: number) => {
+    const settle = (status: SaveStatus) => {
+      if (mySeq === seq && pending === null) useBookStore.setState({ saveStatus: status });
+    };
+    save(book).then(
+      () => settle('saved'),
+      () => settle('error'),
+    );
+  };
+  const flush = () => {
+    clearTimeout(timer);
+    if (!pending) return;
+    const book = pending;
+    pending = null;
+    run(book, seq);
+  };
+
   const unsub = useBookStore.subscribe((state, prev) => {
-    if (state.book === prev.book || !state.book) return;
+    if (state.book === prev.book) return;
+    if (prev.book && state.book?.id !== prev.book.id) {
+      flush(); // book switched: save the previous book's last edit now
+      seq++; // results of the previous book's saves must not touch the new book's status
+    }
+    if (!state.book) return;
     if (state.book === openedBook) {
       openedBook = null;
       return;
     }
+    pending = state.book;
+    seq++;
     useBookStore.setState({ saveStatus: 'saving' });
     clearTimeout(timer);
+    const mySeq = seq;
     timer = setTimeout(() => {
-      const book = useBookStore.getState().book;
-      if (!book) return;
-      save(book).then(
-        () => useBookStore.setState({ saveStatus: 'saved' }),
-        () => useBookStore.setState({ saveStatus: 'error' }),
-      );
+      const book = pending;
+      pending = null;
+      if (book) run(book, mySeq);
     }, delayMs);
   });
   return () => {
     unsub();
-    clearTimeout(timer);
+    flush();
   };
 }

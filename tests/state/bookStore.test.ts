@@ -116,9 +116,15 @@ describe('setMeta', () => {
 });
 
 describe('autosave', () => {
+  let stop: (() => void) | undefined;
+  afterEach(() => {
+    stop?.();
+    stop = undefined;
+  });
+
   it('debounces 1000ms then saved', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
-    const stop = startAutosave(save);
+    stop = startAutosave(save);
     s().addItem('full');
     expect(s().saveStatus).toBe('saving');
     await vi.advanceTimersByTimeAsync(999);
@@ -127,7 +133,6 @@ describe('autosave', () => {
     expect(save).toHaveBeenCalledTimes(1);
     expect(save).toHaveBeenCalledWith(s().book);
     expect(s().saveStatus).toBe('saved');
-    stop();
   });
 
   it('rejection sets error, keeps book, next success resets', async () => {
@@ -135,7 +140,7 @@ describe('autosave', () => {
       .fn()
       .mockRejectedValueOnce(new DOMException('full', 'QuotaExceededError'))
       .mockResolvedValue(undefined);
-    const stop = startAutosave(save);
+    stop = startAutosave(save);
     s().addItem('full');
     await vi.advanceTimersByTimeAsync(1000);
     expect(s().saveStatus).toBe('error');
@@ -143,20 +148,80 @@ describe('autosave', () => {
     s().addItem('full');
     await vi.advanceTimersByTimeAsync(1000);
     expect(s().saveStatus).toBe('saved');
-    stop();
   });
 
-  it('open and selection do not trigger save; unsubscribe clears timer', async () => {
+  it('open and selection do not trigger save', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
-    const stop = startAutosave(save);
+    stop = startAutosave(save);
     s().open(newBook('a5p'));
     useBookStore.setState({ selected: { kind: 'cover', which: 'front' } });
     await vi.advanceTimersByTimeAsync(2000);
     expect(save).not.toHaveBeenCalled();
     expect(s().saveStatus).toBe('saved');
+  });
+
+  it('opening another book flushes the previous book edit, never saves the new one', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    stop = startAutosave(save);
     s().addItem('full');
-    stop();
-    await vi.advanceTimersByTimeAsync(2000);
-    expect(save).not.toHaveBeenCalled();
+    const edited = s().book!;
+    const b = newBook('a5p');
+    await vi.advanceTimersByTimeAsync(500);
+    s().open(b);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(edited);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).not.toHaveBeenCalledWith(b);
+    expect(s().saveStatus).toBe('saved');
+  });
+
+  it('stale in-flight result does not overwrite status after a newer edit', async () => {
+    let resolve1!: () => void;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((r) => (resolve1 = r)))
+      .mockResolvedValue(undefined);
+    stop = startAutosave(save);
+    s().addItem('full');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(save).toHaveBeenCalledTimes(1);
+    s().addItem('full');
+    resolve1();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s().saveStatus).toBe('saving');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(s().saveStatus).toBe('saved');
+  });
+
+  it('old save rejecting after a newer edit does not set error', async () => {
+    let reject1!: (e: unknown) => void;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((_, r) => (reject1 = r)))
+      .mockResolvedValue(undefined);
+    stop = startAutosave(save);
+    s().addItem('full');
+    await vi.advanceTimersByTimeAsync(1000);
+    s().addItem('full');
+    reject1(new Error('old'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s().saveStatus).toBe('saving');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(s().saveStatus).toBe('saved');
+  });
+
+  it('stop flushes a pending edit and leaves status settled', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const unsub = startAutosave(save);
+    s().addItem('full');
+    unsub();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(s().book);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s().saveStatus).toBe('saved');
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(save).toHaveBeenCalledTimes(1);
   });
 });
