@@ -51,12 +51,33 @@ describe('checkBook', () => {
   });
 });
 
+describe('off-page elements', () => {
+  it('warns when an element lies entirely outside the trim canvas (e.g. spread → full)', () => {
+    const book = newBook('sq200');
+    const item = newItem('full');
+    const text = { id: 't', kind: 'text' as const, text: 'x', fontSizePt: 12, color: '#000', band: false, x: 220, y: 10, width: 100, height: 20, rotation: 0 };
+    const partly = { ...text, id: 'p', x: 150 };
+    item.elements.push(text, partly);
+    book.items.push(item);
+    const off = checkBook(book, {}).filter((i) => i.code === 'off-page');
+    expect(off).toEqual([{ level: 'warn', code: 'off-page', ref: { kind: 'item', id: item.id } }]);
+  });
+  it('does not warn for the same element on a spread', () => {
+    const book = newBook('sq200');
+    const item = newItem('spread');
+    item.elements.push({ id: 't', kind: 'text', text: 'x', fontSizePt: 12, color: '#000', band: false, x: 220, y: 10, width: 100, height: 20, rotation: 0 });
+    book.items.push(newItem('blank'), item);
+    expect(checkBook(book, {}).some((i) => i.code === 'off-page')).toBe(false);
+  });
+});
+
 describe('issueText', () => {
   it('formats Korean messages', () => {
     const ref = { kind: 'cover', which: 'front' } as const;
     expect(issueText({ level: 'error', code: 'no-pages' }, '')).toBe('아직 내지가 한 쪽도 없어요.');
     expect(issueText({ level: 'warn', code: 'no-background', ref }, '앞표지')).toBe('앞표지: 배경 사진이 없어요. 흰 바탕으로 인쇄돼요.');
     expect(issueText({ level: 'warn', code: 'low-res', ref, assetId: 'a', dpi: 148 }, '2쪽')).toBe('2쪽: 사진이 작아서 인쇄하면 흐릿할 수 있어요 (약 148dpi).');
+    expect(issueText({ level: 'warn', code: 'off-page', ref }, '4쪽')).toBe('4쪽: 쪽 밖으로 나간 그림이나 글자가 있어요. 인쇄되지 않아요.');
     expect(issueText({ level: 'warn', code: 'misaligned-spread', ref }, '3쪽')).toBe('3쪽: 펼침면이 오른쪽 면에서 시작해요. 앞에 빈 쪽을 넣어 주세요.');
   });
 });
