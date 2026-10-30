@@ -33,7 +33,45 @@ function blockPaperColors(src: RawImage, bxN: number, byN: number): Float32Array
       }
     }
   }
+  cleanOutlierBlocks(out, bxN, byN);
   return out;
+}
+
+const OUTLIER_RATIO = 0.8;
+
+/**
+ * Blocks fully covered by a solid fill look like "paper" to the percentile.
+ * Replace any block that is much darker (in some channel) than its brightest
+ * 8-neighbour by that neighbour, repeating until stable so paper colour
+ * propagates into large filled regions. Smooth shadows are left untouched.
+ */
+function cleanOutlierBlocks(grid: Float32Array, bxN: number, byN: number): void {
+  let prev = new Float32Array(grid);
+  for (let pass = 0; pass < bxN + byN; pass++) {
+    let changed = false;
+    for (let by = 0; by < byN; by++) {
+      for (let bx = 0; bx < bxN; bx++) {
+        let best = -1, bestLum = -1;
+        for (let ny = Math.max(0, by - 1); ny <= Math.min(byN - 1, by + 1); ny++) {
+          for (let nx = Math.max(0, bx - 1); nx <= Math.min(bxN - 1, bx + 1); nx++) {
+            if (nx === bx && ny === by) continue;
+            const k = (ny * bxN + nx) * 3;
+            const lum = 0.299 * prev[k] + 0.587 * prev[k + 1] + 0.114 * prev[k + 2];
+            if (lum > bestLum) { bestLum = lum; best = k; }
+          }
+        }
+        if (best < 0) continue;
+        const me = (by * bxN + bx) * 3;
+        const ratio = Math.min(prev[me] / prev[best], prev[me + 1] / prev[best + 1], prev[me + 2] / prev[best + 2]);
+        if (ratio < OUTLIER_RATIO) {
+          grid[me] = prev[best]; grid[me + 1] = prev[best + 1]; grid[me + 2] = prev[best + 2];
+          changed = true;
+        }
+      }
+    }
+    if (!changed) break;
+    prev = new Float32Array(grid);
+  }
 }
 
 /** Linear interpolation taps between block centres along one axis. */

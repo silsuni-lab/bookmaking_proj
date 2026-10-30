@@ -78,6 +78,16 @@ describe('removePaper', () => {
     expect(r.image.width).toBe(5);
     expect(maxAlpha(r.image)).toBeLessThan(10);
   });
+  test('large dark fill survives', () => {
+    const img = fill(1200, 1200, [243, 234, 210]);
+    paint(img, { x: 400, y: 400, width: 400, height: 400 }, [230, 120, 60]);
+    expect(pixel(removePaper(img, 0.5).image, 600, 600).a).toBeGreaterThan(240);
+  });
+  test('large pale crayon fill survives', () => {
+    const img = fill(1200, 1200, [243, 234, 210]);
+    paint(img, { x: 400, y: 400, width: 400, height: 400 }, [250, 230, 120]);
+    expect(pixel(removePaper(img, 0.5).image, 600, 600).a).toBeGreaterThan(100);
+  });
   test('large image under 3s', () => {
     const img = fill(4000, 3000, [240, 232, 205]);
     const t = Date.now();
