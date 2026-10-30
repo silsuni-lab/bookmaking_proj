@@ -55,19 +55,44 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
   const editCanvas = useRef<HTMLCanvasElement>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
 
+  const mounted = useRef(true);
+  const pending = useRef(new Map<number, { resolve(r: WorkerReply): void; reject(e: Error): void }>());
+  const msgId = useRef(0);
+  const rafHandle = useRef(0);
+
   useEffect(() => {
+    mounted.current = true;
     fileInput.current?.click();
-    return () => workerRef.current?.terminate();
+    const waiting = pending.current;
+    return () => {
+      mounted.current = false;
+      cancelAnimationFrame(rafHandle.current);
+      workerRef.current?.terminate();
+      workerRef.current = null;
+      for (const p of waiting.values()) p.reject(new Error('cancelled'));
+      waiting.clear();
+    };
   }, []);
 
-  const call = useCallback((msg: object): Promise<WorkerReply> => {
-    workerRef.current ??= new Worker(new URL('./cleanupWorker.ts', import.meta.url), { type: 'module' });
+  const call = useCallback((msg: { type: 'warp' | 'paper'; img: RawImage } & Record<string, unknown>): Promise<WorkerReply> => {
+    if (!workerRef.current) {
+      const w = new Worker(new URL('./cleanupWorker.ts', import.meta.url), { type: 'module' });
+      w.onmessage = (e: MessageEvent<WorkerReply & { id: number }>) => {
+        const p = pending.current.get(e.data.id);
+        pending.current.delete(e.data.id);
+        p?.resolve(e.data);
+      };
+      w.onerror = (e) => {
+        for (const p of pending.current.values()) p.reject(new Error(e.message));
+        pending.current.clear();
+      };
+      workerRef.current = w;
+    }
     const w = workerRef.current;
+    const id = ++msgId.current;
     return new Promise((resolve, reject) => {
-      w.onmessage = (e: MessageEvent<WorkerReply>) => resolve(e.data);
-      w.onerror = (e) => reject(new Error(e.message));
-      const img = (msg as { img: RawImage }).img;
-      w.postMessage(msg, [img.data.buffer]);
+      pending.current.set(id, { resolve, reject });
+      w.postMessage({ ...msg, id }, [msg.img.data.buffer]);
     });
   }, []);
 
@@ -79,6 +104,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       const bmp = await loadBitmap(file);
       const raw = await bitmapToRaw(bmp);
       bmp.close();
+      if (!mounted.current) return;
       srcRef.current = raw;
       const inset = 0.08;
       setQuad([
@@ -90,9 +116,10 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       setNotice(null);
       setStage('corners');
     } catch (e) {
+      if (!mounted.current) return;
       setLoadError(e instanceof ImageLoadError ? loadErrorMessage(e) : '사진을 읽지 못했어요. 다른 사진을 골라 주세요.');
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -107,7 +134,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
     setNotice(null);
     try {
       const r = await call({ type: 'paper', img: copyRaw(warped), strength: s });
-      if (id !== reqId.current) return false;
+      if (!mounted.current || id !== reqId.current) return false;
       if ('error' in r) throw new Error(r.error);
       if (!('image' in r)) throw new Error('unexpected reply');
       resultRef.current = r;
@@ -115,11 +142,12 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       drawRaw(resultCanvas.current, r.image);
       return true;
     } catch (e) {
+      if (!mounted.current) return false;
       console.error(e);
       if (id === reqId.current) setNotice('그림을 정리하지 못했어요. 다시 시도해 주세요.');
       return false;
     } finally {
-      if (id === reqId.current) setBusy(false);
+      if (mounted.current && id === reqId.current) setBusy(false);
     }
   }, [call]);
 
@@ -133,7 +161,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       setBusy(true);
       try {
         const r = await call({ type: 'warp', img: copyRaw(src), quad });
-        if (id !== reqId.current) return;
+        if (!mounted.current || id !== reqId.current) return;
         if ('error' in r) {
           setNotice(r.error === 'degenerate quad' ? '모서리 위치를 다시 맞춰 주세요.' : '그림을 정리하지 못했어요. 다시 시도해 주세요.');
           setBusy(false);
@@ -142,6 +170,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
         if (!('img' in r)) throw new Error('unexpected reply');
         warped = r.img;
       } catch (e) {
+        if (!mounted.current) return;
         console.error(e);
         setNotice('그림을 정리하지 못했어요. 다시 시도해 주세요.');
         setBusy(false);
@@ -149,12 +178,21 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       }
     }
     warpedRef.current = warped;
+    resultRef.current = null;
+    maskRef.current = null;
     setStage('paper');
     // canvases mount after the stage change; wait one frame
-    await new Promise((res) => requestAnimationFrame(res));
-    drawRaw(origCanvas.current, warped);
+    await new Promise((res) => { rafHandle.current = requestAnimationFrame(res); });
+    if (!mounted.current) return;
     await runPaper(warped, strength);
   };
+
+  // Redraw step 2 panes whenever it is (re)entered, without recomputing.
+  useEffect(() => {
+    if (stage !== 'paper') return;
+    if (warpedRef.current) drawRaw(origCanvas.current, warpedRef.current);
+    if (resultRef.current) drawRaw(resultCanvas.current, resultRef.current.image);
+  }, [stage]);
 
   // Recompute only when the slider value is committed (native 'change').
   useEffect(() => {
@@ -209,7 +247,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
   const scheduleRender = () => {
     if (rafPending.current) return;
     rafPending.current = true;
-    requestAnimationFrame(() => {
+    rafHandle.current = requestAnimationFrame(() => {
       rafPending.current = false;
       const r = resultRef.current;
       if (r && maskRef.current) drawRaw(editCanvas.current, applyMask(r, maskRef.current));
@@ -226,11 +264,12 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
     };
     const prev = lastPt.current ?? p;
     const dist = Math.hypot(p.x - prev.x, p.y - prev.y);
-    const steps = Math.max(1, Math.ceil(dist / Math.max(1, brush / 3)));
+    const radius = brush * (canvas.width / rect.width); // slider is in on-screen px
+    const steps = Math.max(1, Math.ceil(dist / Math.max(1, radius / 3)));
     const value = tool === 'erase' ? MASK_ERASE : MASK_RESTORE;
     for (let s = 1; s <= steps; s++) {
       const t = s / steps;
-      paintMask(mask, canvas.width, canvas.height, prev.x + (p.x - prev.x) * t, prev.y + (p.y - prev.y) * t, brush, value);
+      paintMask(mask, canvas.width, canvas.height, prev.x + (p.x - prev.x) * t, prev.y + (p.y - prev.y) * t, radius, value);
     }
     lastPt.current = p;
     scheduleRender();
@@ -247,8 +286,9 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       const blob = await rawToPngBlob(final);
       const asset: StoredAsset = { id: newId(), bookId, blob, widthPx: final.width, heightPx: final.height, kind: 'cutout' };
       await putAsset(asset);
-      onDone(asset);
+      if (mounted.current) onDone(asset);
     } catch (e) {
+      if (!mounted.current) return;
       console.error(e);
       setSaveError(true);
       setBusy(false);
@@ -343,7 +383,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
               <button className={`btn${tool === 'erase' ? ' primary' : ''}`} aria-pressed={tool === 'erase'} onClick={() => setTool('erase')}>지우개</button>
               <button className={`btn${tool === 'restore' ? ' primary' : ''}`} aria-pressed={tool === 'restore'} onClick={() => setTool('restore')}>되살리기</button>
               <label className="row">
-                붓 크기
+                붓 크기 ({brush}px)
                 <input type="range" min={5} max={80} step={1} value={brush} onChange={(e) => setBrush(Number(e.target.value))} />
               </label>
             </div>
@@ -364,7 +404,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
           </>
         )}
 
-        {busy && stage !== 'pick' && <p role="status">그림을 정리하고 있어요…</p>}
+        {busy && <p role="status">그림을 정리하고 있어요…</p>}
         {notice && <p className="error" role="alert">{notice}</p>}
         {saveError && <p className="error" role="alert">저장하지 못했어요. 다시 시도해 주세요.</p>}
 
