@@ -1,10 +1,12 @@
-// Generates e2e/fixtures/drawing.jpg: a synthetic phone-photo-like crayon drawing on yellowish paper.
+// Generates e2e/fixtures/drawing.jpg (synthetic crayon drawing on yellowish paper)
+// and e2e/fixtures/photo-rotated.jpg (landscape-stored JPEG with EXIF Orientation=6, i.e. displays portrait).
 import { chromium } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const out = resolve(dirname(fileURLToPath(import.meta.url)), '../e2e/fixtures/drawing.jpg');
+const fixtureDir = resolve(dirname(fileURLToPath(import.meta.url)), '../e2e/fixtures');
+const out = resolve(fixtureDir, 'drawing.jpg');
 const browser = await chromium.launch();
 const page = await browser.newPage();
 const dataUrl = await page.evaluate(() => {
@@ -45,7 +47,31 @@ const dataUrl = await page.evaluate(() => {
   ctx.putImageData(img, 0, 0);
   return c.toDataURL('image/jpeg', 0.9);
 });
+const rotatedUrl = await page.evaluate(() => {
+  const c = document.createElement('canvas');
+  c.width = 1200; c.height = 800; // stored landscape
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 1200, 800);
+  g.addColorStop(0, 'rgb(120,190,240)'); g.addColorStop(1, 'rgb(250,220,150)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 1200, 800);
+  ctx.fillStyle = 'rgb(60,160,80)'; ctx.fillRect(0, 600, 1200, 200);
+  ctx.fillStyle = 'rgb(240,90,60)'; ctx.beginPath(); ctx.arc(300, 300, 120, 0, Math.PI * 2); ctx.fill();
+  return c.toDataURL('image/jpeg', 0.9);
+});
 await browser.close();
-mkdirSync(dirname(out), { recursive: true });
+mkdirSync(fixtureDir, { recursive: true });
 writeFileSync(out, Buffer.from(dataUrl.split(',')[1], 'base64'));
 console.log('wrote', out);
+
+// EXIF APP1 with a single IFD0 entry: Orientation (0x0112) = 6 (rotate 90 CW), big-endian TIFF.
+const exif = Buffer.from([
+  0xff, 0xe1, 0x00, 0x22, // APP1, length 34
+  0x45, 0x78, 0x69, 0x66, 0x00, 0x00, // "Exif\0\0"
+  0x4d, 0x4d, 0x00, 0x2a, 0x00, 0x00, 0x00, 0x08, // TIFF header, IFD0 at offset 8
+  0x00, 0x01, // 1 entry
+  0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x06, 0x00, 0x00, // Orientation, SHORT, count 1, value 6
+  0x00, 0x00, 0x00, 0x00, // no next IFD
+]);
+const jpeg = Buffer.from(rotatedUrl.split(',')[1], 'base64');
+writeFileSync(resolve(fixtureDir, 'photo-rotated.jpg'), Buffer.concat([jpeg.subarray(0, 2), exif, jpeg.subarray(2)]));
+console.log('wrote photo-rotated.jpg');
