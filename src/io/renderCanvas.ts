@@ -104,7 +104,10 @@ export async function renderOps(
         const lines = wrapLines(ctx, op.text, op.rect.width);
         const lh = fontMm * LINE_HEIGHT;
         const cx = op.rect.x + op.rect.width / 2;
-        lines.forEach((l, i) => ctx.fillText(l, cx, op.rect.y + i * lh + (lh - fontMm) / 2));
+        // Like Konva, drop lines that do not fully fit so print matches the editor.
+        lines.forEach((l, i) => {
+          if (i * lh + lh <= op.rect.height + 1e-6) ctx.fillText(l, cx, op.rect.y + i * lh + (lh - fontMm) / 2);
+        });
         break;
       }
     }
