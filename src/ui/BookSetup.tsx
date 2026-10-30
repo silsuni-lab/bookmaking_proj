@@ -17,6 +17,7 @@ export default function BookSetup({ mode, onClose, onCreated }: Props) {
   const [childName, setChildName] = useState(editing ? current.childName : '');
   const [sizeId, setSizeId] = useState<PageSizeId>(editing ? current.sizeId : 'sq200');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
   const sizeLocked = editing && current.items.length > 0;
   const ready = title.trim() !== '' && childName.trim() !== '' && !busy;
 
@@ -30,8 +31,16 @@ export default function BookSetup({ mode, onClose, onCreated }: Props) {
       return;
     }
     setBusy(true);
+    setError(false);
     const book = newBook(sizeId, t, c);
-    await saveBook(book);
+    try {
+      await saveBook(book);
+    } catch (e) {
+      console.error(e);
+      setError(true);
+      setBusy(false);
+      return;
+    }
     onCreated?.(book);
   };
 
@@ -73,6 +82,11 @@ export default function BookSetup({ mode, onClose, onCreated }: Props) {
           ))}
           {sizeLocked && <p className="hint">판형은 쪽을 만들기 전에만 바꿀 수 있어요.</p>}
         </fieldset>
+        {error && (
+          <p className="hint" role="alert">
+            저장하지 못했어요. 잠시 후 다시 시도해 주세요.
+          </p>
+        )}
         <div className="modal-actions">
           <button type="button" className="btn" onClick={onClose}>
             취소

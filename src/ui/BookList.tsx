@@ -25,8 +25,14 @@ export default function BookList({ onOpen }: Props) {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async () => {
-    const all = await listBooks();
-    setBooks([...all].sort((a, b) => b.updatedAt - a.updatedAt));
+    try {
+      const all = await listBooks();
+      setBooks([...all].sort((a, b) => b.updatedAt - a.updatedAt));
+    } catch (e) {
+      console.error(e);
+      setBooks((prev) => prev ?? []);
+      setMessage('책 목록을 불러오지 못했어요.');
+    }
   }, []);
 
   useEffect(() => {
@@ -34,23 +40,40 @@ export default function BookList({ onOpen }: Props) {
   }, [refresh]);
 
   const open = async (id: string) => {
-    const book = await loadBook(id);
-    if (book) onOpen(book);
-    else {
+    try {
+      const book = await loadBook(id);
+      if (book) onOpen(book);
+      else {
+        setMessage('책을 열 수 없어요.');
+        void refresh();
+      }
+    } catch (e) {
+      console.error(e);
       setMessage('책을 열 수 없어요.');
-      void refresh();
     }
   };
 
   const saveFile = async (id: string) => {
-    const book = await loadBook(id);
-    if (book) await downloadBookFile(book);
+    try {
+      const book = await loadBook(id);
+      if (book) await downloadBookFile(book);
+    } catch (e) {
+      console.error(e);
+      setMessage('책 파일을 만들지 못했어요.');
+    }
   };
 
   const confirmDelete = async () => {
     if (!toDelete) return;
-    await deleteBook(toDelete.id);
+    const id = toDelete.id;
     setToDelete(null);
+    try {
+      await deleteBook(id);
+    } catch (e) {
+      console.error(e);
+      setMessage('책을 지우지 못했어요.');
+      return;
+    }
     await refresh();
   };
 
@@ -63,6 +86,7 @@ export default function BookList({ onOpen }: Props) {
       await saveBook(book);
       await refresh();
     } catch (e) {
+      console.error(e);
       setMessage(e instanceof BookFileError ? e.message : '책 파일을 불러오지 못했어요.');
     }
   };
