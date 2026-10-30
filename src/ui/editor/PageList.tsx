@@ -16,33 +16,54 @@ interface ThumbProps {
   images: Map<string, HTMLImageElement>;
 }
 
-/** Low-resolution preview. Redrawn only when the (immutable) item object or the loaded photos change. */
-const Thumb = memo(function Thumb({ item, sizeId, dims, images }: ThumbProps) {
+/** Thumbnails are drawn one at a time so a big book never decodes/draws many pages at once. */
+let thumbQueue: Promise<void> = Promise.resolve();
+function enqueueThumb(job: () => Promise<void>): void {
+  thumbQueue = thumbQueue.then(job).catch((e) => console.error(e));
+}
+
+/** The subset of images/dims an item uses; keeps the previous object while those entries are unchanged. */
+function useItemAssets(item: PageItem, dims: AssetDims, images: Map<string, HTMLImageElement>) {
+  const ids = useMemo(() => {
+    const s = new Set<string>();
+    if (item.backgroundAssetId) s.add(item.backgroundAssetId);
+    for (const e of item.elements) if (e.kind === 'image') s.add(e.assetId);
+    return [...s];
+  }, [item]);
+  const prev = useRef<{ ids: string[]; dims: AssetDims; images: Map<string, HTMLImageElement> } | null>(null);
+  const p = prev.current;
+  if (!p || p.ids !== ids || ids.some((id) => p.images.get(id) !== images.get(id) || p.dims[id] !== dims[id])) {
+    const subDims: AssetDims = {};
+    const subImages = new Map<string, HTMLImageElement>();
+    for (const id of ids) {
+      if (dims[id]) subDims[id] = dims[id];
+      const img = images.get(id);
+      if (img) subImages.set(id, img);
+    }
+    prev.current = { ids, dims: subDims, images: subImages };
+  }
+  return prev.current!;
+}
+
+/** Low-resolution preview. Redrawn only when the (immutable) item object or the photos it uses change. */
+const Thumb = memo(function Thumb({ item, sizeId, dims: allDims, images: allImages }: ThumbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const size = PAGE_SIZES[sizeId];
   const spread = item.layout === 'spread';
   const aspect = ((spread ? 2 : 1) * size.widthMm + 6) / (size.heightMm + 6);
+  const { dims, images } = useItemAssets(item, allDims, allImages);
 
   useEffect(() => {
     let dead = false;
-    const bitmaps = new Map<string, ImageBitmap>();
-    void (async () => {
-      const plan = planItem(item, size, dims);
-      for (const op of plan.ops) {
-        if (op.op !== 'image' || bitmaps.has(op.assetId)) continue;
-        const img = images.get(op.assetId);
-        if (img) bitmaps.set(op.assetId, await createImageBitmap(img));
-      }
+    enqueueThumb(async () => {
       if (dead) return;
-      const off = await renderOps(plan, bitmaps, THUMB_PX_PER_MM);
+      const off = await renderOps(planItem(item, size, dims), images, THUMB_PX_PER_MM);
       const canvas = canvasRef.current;
       if (dead || !canvas) return;
       canvas.width = off.width;
       canvas.height = off.height;
       canvas.getContext('2d')?.drawImage(off, 0, 0);
-    })()
-      .catch((e) => console.error(e))
-      .finally(() => bitmaps.forEach((b) => b.close()));
+    });
     return () => {
       dead = true;
     };

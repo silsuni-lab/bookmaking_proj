@@ -54,7 +54,7 @@ function wrapLines(ctx: OffscreenCanvasRenderingContext2D, text: string, maxWidt
 
 export async function renderOps(
   plan: ReturnType<typeof planItem>,
-  bitmaps: Map<string, ImageBitmap>,
+  bitmaps: ReadonlyMap<string, CanvasImageSource>,
   pxPerMm: number,
 ): Promise<OffscreenCanvas> {
   const canvas = new OffscreenCanvas(Math.round(plan.widthMm * pxPerMm), Math.round(plan.heightMm * pxPerMm));
