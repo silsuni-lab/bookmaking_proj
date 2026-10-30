@@ -58,7 +58,12 @@ export async function rawToPngBlob(img: RawImage): Promise<Blob> {
   return canvas.convertToBlob({ type: 'image/png' });
 }
 
-export async function bitmapToJpegBlob(bmp: ImageBitmap, max: number = MAX_SIDE_PX): Promise<Blob> {
+/** Encodes the bitmap as JPEG (downscaled to ≤ max px); width/height are the encoded image's real size. */
+export async function bitmapToJpegBlob(
+  bmp: ImageBitmap,
+  max: number = MAX_SIDE_PX,
+): Promise<{ blob: Blob; width: number; height: number }> {
   const { canvas } = drawScaled(bmp, max);
-  return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
+  const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
+  return { blob, width: canvas.width, height: canvas.height };
 }

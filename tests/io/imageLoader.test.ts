@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { ImageLoadError, fitWithin, loadBitmap, loadErrorMessage } from '../../src/io/imageLoader';
+import { ImageLoadError, bitmapToJpegBlob, fitWithin, loadBitmap, loadErrorMessage } from '../../src/io/imageLoader';
 
 const original = globalThis.createImageBitmap;
 afterEach(() => { globalThis.createImageBitmap = original; });
@@ -32,4 +32,25 @@ test('message', () => {
 test('fitWithin', () => {
   expect(fitWithin(8000, 6000, 4000)).toEqual({ width: 4000, height: 3000 });
   expect(fitWithin(100, 50, 4000)).toEqual({ width: 100, height: 50 });
+});
+
+test('bitmapToJpegBlob reports the encoded (downscaled) size, not the source size', async () => {
+  const origCanvas = (globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas;
+  class FakeCanvas {
+    constructor(public width: number, public height: number) {}
+    getContext() { return { drawImage: () => {} }; }
+    convertToBlob() { return Promise.resolve(new Blob(['j'], { type: 'image/jpeg' })); }
+  }
+  (globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas = FakeCanvas;
+  try {
+    const bmp = { width: 5000, height: 3750 } as ImageBitmap;
+    const out = await bitmapToJpegBlob(bmp);
+    expect(out.width).toBe(4000);
+    expect(out.height).toBe(3000);
+    expect(out.blob.type).toBe('image/jpeg');
+    const small = await bitmapToJpegBlob({ width: 800, height: 600 } as ImageBitmap);
+    expect([small.width, small.height]).toEqual([800, 600]);
+  } finally {
+    (globalThis as { OffscreenCanvas?: unknown }).OffscreenCanvas = origCanvas;
+  }
 });

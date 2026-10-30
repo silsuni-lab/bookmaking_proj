@@ -120,8 +120,8 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
     setBusy(true);
     try {
       const bmp = await loadBitmap(f);
-      const blob = await bitmapToJpegBlob(bmp);
-      const asset: StoredAsset = { id: newId(), bookId: book.id, blob, widthPx: bmp.width, heightPx: bmp.height, kind: 'photo' };
+      const { blob, width, height } = await bitmapToJpegBlob(bmp);
+      const asset: StoredAsset = { id: newId(), bookId: book.id, blob, widthPx: width, heightPx: height, kind: 'photo' };
       bmp.close?.();
       await putAsset(asset);
       onAsset(asset);
