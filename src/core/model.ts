@@ -1,0 +1,118 @@
+export const BLEED_MM = 3;
+export const DPI = 300;
+
+export type PageSizeId = 'sq200' | 'a5p' | 'a5l' | 'a4p' | 'a4l';
+export interface PageSize {
+  id: PageSizeId;
+  label: string;
+  widthMm: number;
+  heightMm: number;
+}
+
+export const PAGE_SIZES: Record<PageSizeId, PageSize> = {
+  sq200: { id: 'sq200', label: '정사각 20×20cm', widthMm: 200, heightMm: 200 },
+  a5p: { id: 'a5p', label: 'A5 세로', widthMm: 148, heightMm: 210 },
+  a5l: { id: 'a5l', label: 'A5 가로', widthMm: 210, heightMm: 148 },
+  a4p: { id: 'a4p', label: 'A4 세로', widthMm: 210, heightMm: 297 },
+  a4l: { id: 'a4l', label: 'A4 가로', widthMm: 297, heightMm: 210 },
+};
+
+export type LayoutKind = 'full' | 'spread' | 'blank';
+
+// mm, trim origin of the item's canvas
+interface ElementBase {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+}
+export interface ImageElement extends ElementBase {
+  kind: 'image';
+  assetId: string;
+  role: 'drawing' | 'handwriting';
+}
+export interface TextElement extends ElementBase {
+  kind: 'text';
+  text: string;
+  fontSizePt: number;
+  color: string;
+  band: boolean;
+}
+export type PageElement = ImageElement | TextElement;
+
+/** photoSide is only meaningful for 'spread': the side covered by the background photo (the other side is cream #FFFDF5). */
+export interface PageItem {
+  id: string;
+  layout: LayoutKind;
+  backgroundAssetId: string | null;
+  photoSide: 'left' | 'right';
+  elements: PageElement[];
+}
+
+export interface Book {
+  id: string;
+  title: string;
+  childName: string;
+  sizeId: PageSizeId;
+  cover: { front: PageItem; back: PageItem };
+  items: PageItem[];
+  updatedAt: number;
+}
+
+export interface Asset {
+  id: string;
+  blob: Blob;
+  widthPx: number;
+  heightPx: number;
+  kind: 'photo' | 'cutout';
+}
+
+export type ItemRef = { kind: 'cover'; which: 'front' | 'back' } | { kind: 'item'; id: string };
+
+export function newId(): string {
+  return crypto.randomUUID();
+}
+
+export function newItem(layout: LayoutKind): PageItem {
+  return { id: newId(), layout, backgroundAssetId: null, photoSide: 'left', elements: [] };
+}
+
+export function itemCanvasMm(item: PageItem, size: PageSize): { widthMm: number; heightMm: number } {
+  return {
+    widthMm: item.layout === 'spread' ? size.widthMm * 2 : size.widthMm,
+    heightMm: size.heightMm,
+  };
+}
+
+function textElement(
+  text: string,
+  fontSizePt: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): TextElement {
+  return { id: newId(), kind: 'text', x, y, width, height, rotation: 0, text, fontSizePt, color: '#222222', band: false };
+}
+
+export function newBook(sizeId: PageSizeId, title = '', childName = ''): Book {
+  const size = PAGE_SIZES[sizeId];
+  const w = size.widthMm * 0.8;
+  const x = (size.widthMm - w) / 2;
+  const front = newItem('full');
+  front.elements.push(
+    textElement(title, 28, x, size.heightMm * 0.12, w, size.heightMm * 0.15),
+    textElement(`글·그림 ${childName}`, 14, x, size.heightMm * 0.3, w, size.heightMm * 0.07),
+  );
+  return {
+    id: newId(),
+    title,
+    childName,
+    sizeId,
+    cover: { front, back: newItem('full') },
+    items: [],
+    updatedAt: Date.now(),
+  };
+}
