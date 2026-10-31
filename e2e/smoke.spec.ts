@@ -113,3 +113,31 @@ test('make a book: rotated photo, cleaned drawing, pages survive reload, export 
   // Privacy: nothing left localhost
   expect(external).toEqual([]);
 });
+
+test('background photo can be dragged, zoomed and reset', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '새 책 만들기' }).click();
+  const setup = page.getByRole('dialog', { name: '새 책 만들기' });
+  await setup.getByLabel('책 제목').fill('배경 위치');
+  await setup.getByLabel('아이 이름').fill('하준');
+  await setup.getByRole('button', { name: '만들기' }).click();
+  await page.locator('aside.inspector input[type=file]').setInputFiles(ROTATED); // portrait photo on a square page
+  await expect(page.getByRole('heading', { name: '배경 사진' })).toBeVisible();
+  const frame = async () => (await readDb(page)).books[0]?.cover.front.bgFrame;
+
+  // Drag the photo upward on the page: the view moves toward the bottom of the photo
+  const box = (await page.locator('.page-editor canvas').first().boundingBox())!;
+  const x = box.x + box.width * 0.25;
+  const y = box.y + box.height * 0.6;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 40, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await frame())?.cy ?? 0.5).toBeGreaterThan(0.5);
+
+  await page.getByLabel('확대').fill('2');
+  await expect.poll(async () => (await frame())?.zoom).toBe(2);
+
+  await page.getByRole('button', { name: '처음 위치로' }).click();
+  await expect.poll(frame).toBeUndefined();
+});

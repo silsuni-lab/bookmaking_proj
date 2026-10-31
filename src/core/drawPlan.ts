@@ -1,7 +1,7 @@
 import { BLEED_MM, itemCanvasMm } from './model';
 import type { PageItem, PageSize } from './model';
-import { coverFit } from './geometry';
-import type { Rect } from './geometry';
+import { DEFAULT_FRAME, framedCrop } from './geometry';
+import type { BgFrame, Rect } from './geometry';
 
 // Units: mm. Origin = top-left of the bleed-inclusive canvas.
 export type DrawOp =
@@ -17,10 +17,10 @@ export interface AssetDims {
 const WHITE = '#FFFFFF';
 const CREAM = '#FFFDF5';
 
-function backgroundOp(assetId: string, dest: Rect, dims: AssetDims): DrawOp | null {
+function backgroundOp(assetId: string, dest: Rect, dims: AssetDims, frame: BgFrame = DEFAULT_FRAME): DrawOp | null {
   const d = dims[assetId];
   if (!d) return null;
-  return { op: 'image', assetId, src: coverFit(d.widthPx, d.heightPx, dest.width, dest.height), dest, rotation: 0 };
+  return { op: 'image', assetId, src: framedCrop(d.widthPx, d.heightPx, dest.width, dest.height, frame), dest, rotation: 0 };
 }
 
 export function planItem(
@@ -35,7 +35,7 @@ export function planItem(
 
   if (item.layout === 'full') {
     if (item.backgroundAssetId) {
-      const bg = backgroundOp(item.backgroundAssetId, { x: 0, y: 0, width: widthMm, height: heightMm }, dims);
+      const bg = backgroundOp(item.backgroundAssetId, { x: 0, y: 0, width: widthMm, height: heightMm }, dims, item.bgFrame);
       if (bg) ops.push(bg);
     }
   } else if (item.layout === 'spread') {
@@ -43,7 +43,7 @@ export function planItem(
     const photoX = item.photoSide === 'left' ? 0 : half;
     const creamX = item.photoSide === 'left' ? half : 0;
     if (item.backgroundAssetId) {
-      const bg = backgroundOp(item.backgroundAssetId, { x: photoX, y: 0, width: half, height: heightMm }, dims);
+      const bg = backgroundOp(item.backgroundAssetId, { x: photoX, y: 0, width: half, height: heightMm }, dims, item.bgFrame);
       if (bg) ops.push(bg);
     }
     ops.push({ op: 'fill', color: CREAM, rect: { x: creamX, y: 0, width: half, height: heightMm } });

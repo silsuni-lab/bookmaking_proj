@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { checkBook, issueText } from '../../core/validate';
 import type { AssetDims } from '../../core/drawPlan';
+import { DEFAULT_FRAME, MAX_BG_ZOOM } from '../../core/geometry';
 import { clampPt, newTextElement, pageLabelOf } from '../../core/editorLayout';
 import { newId, PAGE_SIZES } from '../../core/model';
 import type { Book, ItemRef, LayoutKind, PageItem, TextElement } from '../../core/model';
@@ -180,6 +181,22 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
           }}
         />
       </div>
+      {item.backgroundAssetId && item.layout !== 'blank' && (
+        <section className="inspector-group">
+          <h3>배경 사진</h3>
+          <p className="hint">페이지의 사진을 마우스로 끌면 위치를 옮길 수 있어요.</p>
+          <label className="field">
+            <span>확대</span>
+            <input
+              type="range" min={1} max={MAX_BG_ZOOM} step={0.1} value={(item.bgFrame ?? DEFAULT_FRAME).zoom}
+              onChange={(e) => store().setBgFrame(itemRef, { ...(item.bgFrame ?? DEFAULT_FRAME), zoom: Number(e.target.value) })}
+            />
+          </label>
+          <button className="btn" disabled={!item.bgFrame} onClick={() => store().setBgFrame(itemRef, undefined)}>
+            처음 위치로
+          </button>
+        </section>
+      )}
       {busy && <p role="status">사진을 넣는 중이에요…</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {sel?.kind === 'text' && <TextEditor key={sel.id} el={sel} itemRef={itemRef} />}
