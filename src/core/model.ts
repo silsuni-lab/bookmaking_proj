@@ -1,3 +1,6 @@
+import type { BgFrame } from './geometry';
+
+
 export const BLEED_MM = 3;
 export const DPI = 300;
 
@@ -47,6 +50,8 @@ export interface PageItem {
   id: string;
   layout: LayoutKind;
   backgroundAssetId: string | null;
+  /** Position/zoom of the background photo; absent = centred, no zoom. */
+  bgFrame?: BgFrame;
   photoSide: 'left' | 'right';
   elements: PageElement[];
 }

@@ -4,6 +4,8 @@ import type Konva from 'konva';
 import { planItem } from '../../core/drawPlan';
 import type { AssetDims } from '../../core/drawPlan';
 import { fitScale } from '../../core/editorLayout';
+import { clampFrame, DEFAULT_FRAME, panFrame } from '../../core/geometry';
+import type { BgFrame } from '../../core/geometry';
 import { BLEED_MM, PAGE_SIZES } from '../../core/model';
 import type { ItemRef, PageElement, PageItem } from '../../core/model';
 import { useBookStore } from '../../state/bookStore';
@@ -31,7 +33,14 @@ function isTyping(t: EventTarget | null): boolean {
 
 export default function PageEditor({ itemRef, item, sizeId, dims, images, selectedEl, onSelectEl }: Props) {
   const size = PAGE_SIZES[sizeId];
-  const plan = useMemo(() => planItem(item, size, dims), [item, size, dims]);
+  // While the background is being dragged, preview the new frame without touching the store (one undo step per drag).
+  const [bgPreview, setBgPreview] = useState<BgFrame | null>(null);
+  const bgStart = useRef<BgFrame>(DEFAULT_FRAME);
+  const bgLive = useRef<BgFrame>(DEFAULT_FRAME);
+  const plan = useMemo(
+    () => planItem(bgPreview ? { ...item, bgFrame: bgPreview } : item, size, dims),
+    [item, size, dims, bgPreview],
+  );
   const holder = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 800, h: 600 });
   const [, setFontTick] = useState(0);
@@ -112,7 +121,31 @@ export default function PageEditor({ itemRef, item, sizeId, dims, images, select
             }
             if (op.op === 'image' && op.src) {
               const img = images.get(op.assetId);
-              return img ? <KImage key={i} name="bg" image={img} {...op.dest} crop={op.src} /> : null;
+              const d = dims[op.assetId];
+              const { dest } = op;
+              // Konva reports the total drag offset from the start; the image itself stays put and only its crop changes.
+              const pan = (n: Konva.Node) => {
+                bgLive.current = panFrame(d.widthPx, d.heightPx, dest.width, dest.height, bgStart.current, n.x() - dest.x, n.y() - dest.y);
+                n.position({ x: dest.x, y: dest.y });
+                setBgPreview(bgLive.current);
+              };
+              return img ? (
+                <KImage
+                  key={i} name="bg" image={img} {...dest} crop={op.src}
+                  draggable dragDistance={3}
+                  onMouseEnter={(e) => { e.target.getStage()!.container().style.cursor = 'move'; }}
+                  onMouseLeave={(e) => { e.target.getStage()!.container().style.cursor = ''; }}
+                  onDragStart={() => {
+                    bgStart.current = clampFrame(d.widthPx, d.heightPx, dest.width, dest.height, item.bgFrame ?? DEFAULT_FRAME);
+                    bgLive.current = bgStart.current;
+                  }}
+                  onDragMove={(e) => pan(e.target)}
+                  onDragEnd={() => {
+                    useBookStore.getState().setBgFrame(itemRef, bgLive.current);
+                    setBgPreview(null);
+                  }}
+                />
+              ) : null;
             }
             return null;
           })}

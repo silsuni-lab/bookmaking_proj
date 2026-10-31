@@ -20,6 +20,14 @@ describe('planItem', () => {
     });
   });
 
+  it('background follows the item frame', () => {
+    const item = newItem('full');
+    item.backgroundAssetId = 'bg';
+    item.bgFrame = { zoom: 2, cx: 0.5, cy: 0.5 };
+    const plan = planItem(item, PAGE_SIZES.sq200, { bg: { widthPx: 4000, heightPx: 3000 } });
+    expect(plan.ops[1]).toMatchObject({ src: { x: 1250, y: 750, width: 1500, height: 1500 } });
+  });
+
   it('text with band: band op directly before text op, shifted by bleed', () => {
     const item = newItem('full');
     const t: TextElement = {

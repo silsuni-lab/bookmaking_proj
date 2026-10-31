@@ -80,6 +80,15 @@ describe('edits and undo', () => {
     expect(s().book!.items[0]).toMatchObject({ layout: 'spread', photoSide: 'right' });
   });
 
+  it('background frame is kept per item and reset by a new photo', () => {
+    const ref = { kind: 'cover', which: 'front' } as const;
+    s().setBackground(ref, 'asset1');
+    s().setBgFrame(ref, { zoom: 2, cx: 0.3, cy: 0.6 });
+    expect(s().book!.cover.front.bgFrame).toEqual({ zoom: 2, cx: 0.3, cy: 0.6 });
+    s().setBackground(ref, 'asset2');
+    expect(s().book!.cover.front.bgFrame).toBeUndefined();
+  });
+
   it('updates are immutable and bump updatedAt', () => {
     const before = s().book!;
     vi.setSystemTime(before.updatedAt + 5000);

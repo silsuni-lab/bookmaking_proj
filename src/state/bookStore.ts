@@ -3,6 +3,7 @@ import { temporal } from 'zundo';
 import { fixAlignment, misalignedSpreads } from '../core/pagination';
 import { coverTextBoxes, newItem, PAGE_SIZES } from '../core/model';
 import type { Book, ItemRef, LayoutKind, PageElement, PageItem } from '../core/model';
+import type { BgFrame } from '../core/geometry';
 import { saveBook } from '../io/storage';
 
 export type SaveStatus = 'saved' | 'saving' | 'error';
@@ -18,6 +19,7 @@ interface BookState {
   moveItem(id: string, toIndex: number): void;
   setLayout(ref: ItemRef, layout: LayoutKind): void;
   setBackground(ref: ItemRef, assetId: string | null): void;
+  setBgFrame(ref: ItemRef, frame: BgFrame | undefined): void;
   setPhotoSide(ref: ItemRef, side: 'left' | 'right'): void;
   addElement(ref: ItemRef, el: PageElement): void;
   updateElement(ref: ItemRef, elId: string, patch: Partial<PageElement>): void;
@@ -136,7 +138,8 @@ export const useBookStore = create<BookState>()(
         },
 
         setLayout: (ref, layout) => editItem(ref, (i) => ({ ...i, layout })),
-        setBackground: (ref, assetId) => editItem(ref, (i) => ({ ...i, backgroundAssetId: assetId })),
+        setBackground: (ref, assetId) => editItem(ref, (i) => ({ ...i, backgroundAssetId: assetId, bgFrame: undefined })),
+        setBgFrame: (ref, frame) => editItem(ref, (i) => ({ ...i, bgFrame: frame })),
         setPhotoSide: (ref, side) => editItem(ref, (i) => ({ ...i, photoSide: side })),
         addElement: (ref, el) => editItem(ref, (i) => ({ ...i, elements: [...i.elements, el] })),
         updateElement: (ref, elId, patch) =>
