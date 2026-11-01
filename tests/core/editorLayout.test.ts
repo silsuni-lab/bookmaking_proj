@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitScale, foldScale, newImageElement, newTextElement, pageLabelOf, placementArea } from '../../src/core/editorLayout';
+import { fitScale, foldScale, rotateAboutCenter, newImageElement, newTextElement, pageLabelOf, placementArea } from '../../src/core/editorLayout';
 import { newItem, PAGE_SIZES } from '../../src/core/model';
 
 const size = PAGE_SIZES.sq200;
@@ -46,5 +46,15 @@ describe('editorLayout', () => {
     const b = newItem('spread');
     expect(pageLabelOf({ kind: 'cover', which: 'back' }, [])).toBe('뒤표지');
     expect(pageLabelOf({ kind: 'item', id: b.id }, [a, b])).toBe('2쪽');
+  });
+  it('rotateAboutCenter turns 90° keeping the centre in place', () => {
+    const r = rotateAboutCenter({ x: 0, y: 0, width: 20, height: 10, rotation: 0 }, 90);
+    expect(r.rotation).toBe(90);
+    expect(r.x).toBeCloseTo(15);
+    expect(r.y).toBeCloseTo(-5);
+    const back = rotateAboutCenter({ x: r.x, y: r.y, width: 20, height: 10, rotation: r.rotation }, -90);
+    expect(back.rotation).toBe(0);
+    expect(back.x).toBeCloseTo(0);
+    expect(back.y).toBeCloseTo(0);
   });
 });

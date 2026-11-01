@@ -11,6 +11,11 @@ export interface Rect {
   height: number;
 }
 
+export interface Pt2 {
+  x: number;
+  y: number;
+}
+
 export interface Rect1D {
   start: number;
   end: number;
@@ -63,6 +68,38 @@ export function panFrame(srcW: number, srcH: number, boxW: number, boxH: number,
     cx: f.cx - (dxMm * pxPerMm) / srcW,
     cy: f.cy - (dyMm * pxPerMm) / srcH,
   });
+}
+
+/** Where the whole photo lies (mm, same space as dest) for a framed background; parts outside dest are cropped off. */
+export function imageRectOf(srcW: number, srcH: number, dest: Rect, f: BgFrame): Rect {
+  const crop = framedCrop(srcW, srcH, dest.width, dest.height, f);
+  const s = dest.width / crop.width;
+  return { x: dest.x - crop.x * s, y: dest.y - crop.y * s, width: srcW * s, height: srcH * s };
+}
+
+/** The frame that puts the whole photo at `rect` (clamped: the photo always covers dest). */
+export function frameFromImageRect(srcW: number, srcH: number, dest: Rect, rect: Rect): BgFrame {
+  const base = coverFit(srcW, srcH, dest.width, dest.height);
+  const zoom = rect.width / srcW / (dest.width / base.width);
+  return clampFrame(srcW, srcH, dest.width, dest.height, {
+    zoom,
+    cx: (dest.x + dest.width / 2 - rect.x) / rect.width,
+    cy: (dest.y + dest.height / 2 - rect.y) / rect.height,
+  });
+}
+
+/**
+ * Scale factor for dragging the corner `from` to `to` while the opposite corner `anchor` stays put:
+ * the drag projected on the anchor→corner diagonal (outward > 1, inward < 1, never ≤ 0).
+ */
+export function cornerDragScale(anchor: Pt2, from: Pt2, to: Pt2): number {
+  const dx = from.x - anchor.x, dy = from.y - anchor.y;
+  const k = ((to.x - anchor.x) * dx + (to.y - anchor.y) * dy) / (dx * dx + dy * dy);
+  return Math.max(0.05, k);
+}
+
+export function scaleRectAbout(r: Rect, anchor: Pt2, k: number): Rect {
+  return { x: anchor.x + (r.x - anchor.x) * k, y: anchor.y + (r.y - anchor.y) * k, width: r.width * k, height: r.height * k };
 }
 
 export function effectiveDpi(srcPx: number, printedMm: number): number {

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { useBookStore } from '../../state/bookStore';
 import CleanupDialog from '../cleanup/CleanupDialog';
 import { newImageElement } from '../../core/editorLayout';
-import { PAGE_SIZES } from '../../core/model';
-import type { ItemRef, PageItem } from '../../core/model';
+import { newId, PAGE_SIZES } from '../../core/model';
+import type { ImageElement, ItemRef, PageItem } from '../../core/model';
 import Inspector from './Inspector';
 import PageList from './PageList';
 import PageEditor from './PageEditor';
@@ -21,7 +21,7 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
   const selected = useBookStore((s) => s.selected);
   const assets = useBookAssets(bookId);
   const [selectedEl, setSelectedEl] = useState<string | null>(null);
-  const [cleanup, setCleanup] = useState<'drawing' | 'handwriting' | null>(null);
+  const [cleanup, setCleanup] = useState<{ role: 'drawing' | 'handwriting'; elId?: string } | null>(null);
 
   useEffect(() => {
     if (!useBookStore.getState().selected) useBookStore.setState({ selected: FRONT });
@@ -38,6 +38,9 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
     </div>
   );
   if (!item) return <div className="editor-main">{pageList}</div>;
+  const redoTarget = cleanup?.elId
+    ? (item.elements.find((e): e is ImageElement => e.id === cleanup.elId && e.kind === 'image' && !!e.cleanup) ?? null)
+    : null;
 
   return (
     <div className="editor-main">
@@ -47,20 +50,31 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
         selectedEl={selectedEl} onSelectEl={setSelectedEl}
       />
       <Inspector
-        book={book} itemRef={ref} item={item} dims={assets.dims}
+        book={book} itemRef={ref} item={item} dims={assets.dims} images={assets.images}
         selectedEl={selectedEl} onSelectEl={setSelectedEl}
-        onAsset={assets.add} onOpenCleanup={setCleanup}
+        onAsset={assets.add} onOpenCleanup={(role, elId) => setCleanup({ role, elId })}
       />
       {cleanup && (
         <CleanupDialog
+          key={cleanup.elId ?? 'new'}
           bookId={book.id}
-          role={cleanup}
+          role={cleanup.role}
+          redo={redoTarget?.cleanup}
           onCancel={() => setCleanup(null)}
-          onDone={(asset) => {
-            assets.add(asset);
-            const el = newImageElement(item, PAGE_SIZES[book.sizeId], asset.id, cleanup, asset.widthPx / asset.heightPx);
-            useBookStore.getState().addElement(ref, el);
-            setSelectedEl(el.id);
+          onDone={({ cutout, saved, cleanup: source }) => {
+            assets.add(cutout);
+            saved.forEach(assets.add);
+            const st = useBookStore.getState();
+            if (redoTarget) {
+              // keep position, width and rotation; the new cutout may have a different shape
+              st.updateElement(ref, redoTarget.id, {
+                assetId: cutout.id, cleanup: source, height: (redoTarget.width * cutout.heightPx) / cutout.widthPx,
+              });
+            } else {
+              const el = newImageElement(item, PAGE_SIZES[book.sizeId], cutout.id, cleanup.role, cutout.widthPx / cutout.heightPx);
+              st.addElement(ref, { ...el, cleanup: source }, { id: newId(), assetId: cutout.id, role: cleanup.role, cleanup: source });
+              setSelectedEl(el.id);
+            }
             setCleanup(null);
           }}
         />

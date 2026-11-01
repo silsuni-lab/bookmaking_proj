@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
-import { newId, referencedAssetIds, type Book, type PageItem } from '../core/model';
+import { newId, referencedAssetIds, type Book, type CleanupSource, type PageItem } from '../core/model';
 import type { StoredAsset } from './storage';
+
+const isPng = (kind: StoredAsset['kind']) => kind === 'cutout' || kind === 'mask';
 
 export class BookFileError extends Error {
   constructor() {
@@ -22,7 +24,7 @@ export async function exportBookFile(book: Book, assets: StoredAsset[]): Promise
   zip.file('book.json', JSON.stringify(book));
   const used = referencedAssetIds(book);
   const manifestAssets: ManifestAsset[] = assets.filter((a) => used.has(a.id)).map((a) => {
-    const file = `assets/${a.id}.${a.kind === 'cutout' ? 'png' : 'jpg'}`;
+    const file = `assets/${a.id}.${isPng(a.kind) ? 'png' : 'jpg'}`;
     zip.file(file, a.blob);
     return { id: a.id, kind: a.kind, widthPx: a.widthPx, heightPx: a.heightPx, file };
   });
@@ -43,17 +45,27 @@ export async function importBookFile(file: Blob): Promise<{ book: Book; assets: 
     const assets: StoredAsset[] = [];
     const idMap = new Map<string, string>();
     for (const m of manifest.assets) idMap.set(m.id, newId());
+    const id = (old: string) => idMap.get(old) ?? old;
+    const remapDrawing = <T extends { assetId: string; cleanup?: CleanupSource }>(d: T): T => {
+      const cleanup = d.cleanup && {
+        ...d.cleanup,
+        sourceAssetId: id(d.cleanup.sourceAssetId),
+        maskAssetId: d.cleanup.maskAssetId && id(d.cleanup.maskAssetId),
+      };
+      return { ...d, assetId: id(d.assetId), ...(cleanup ? { cleanup } : {}) };
+    };
     const remap = (item: PageItem): PageItem => ({
       ...item,
       backgroundAssetId: item.backgroundAssetId ? (idMap.get(item.backgroundAssetId) ?? item.backgroundAssetId) : null,
-      elements: item.elements.map((el) => (el.kind === 'image' ? { ...el, assetId: idMap.get(el.assetId) ?? el.assetId } : el)),
+      elements: item.elements.map((el) => (el.kind === 'image' ? remapDrawing(el) : el)),
     });
     book.cover = { front: remap(book.cover.front), back: remap(book.cover.back) };
     book.items = book.items.map(remap);
+    if (book.library) book.library = book.library.map(remapDrawing);
     for (const m of manifest.assets) {
       const entry = zip.file(m.file);
       if (!entry) throw new BookFileError();
-      const type = m.kind === 'cutout' ? 'image/png' : 'image/jpeg';
+      const type = isPng(m.kind) ? 'image/png' : 'image/jpeg';
       const blob = new Blob([await entry.async('arraybuffer')], { type });
       assets.push({ id: idMap.get(m.id)!, kind: m.kind, widthPx: m.widthPx, heightPx: m.heightPx, blob, bookId: book.id });
     }

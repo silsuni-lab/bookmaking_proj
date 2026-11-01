@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 import { fixAlignment, misalignedSpreads } from '../core/pagination';
-import { coverTextBoxes, newItem, PAGE_SIZES } from '../core/model';
-import type { Book, ItemRef, LayoutKind, PageElement, PageItem } from '../core/model';
+import { coverTextBoxes, newItem, PAGE_SIZES, withLibrary } from '../core/model';
+import type { Book, ItemRef, LayoutKind, LibraryItem, PageElement, PageItem } from '../core/model';
 import type { BgFrame } from '../core/geometry';
 import { saveBook } from '../io/storage';
 
@@ -21,7 +21,9 @@ interface BookState {
   setBackground(ref: ItemRef, assetId: string | null): void;
   setBgFrame(ref: ItemRef, frame: BgFrame | undefined): void;
   setPhotoSide(ref: ItemRef, side: 'left' | 'right'): void;
-  addElement(ref: ItemRef, el: PageElement): void;
+  /** With libraryItem, also saves a newly made drawing to the collection (same undo step). */
+  addElement(ref: ItemRef, el: PageElement, libraryItem?: LibraryItem): void;
+  removeFromLibrary(id: string): void;
   updateElement(ref: ItemRef, elId: string, patch: Partial<PageElement>): void;
   removeElement(ref: ItemRef, elId: string): void;
   fixSpread(id: string): void;
@@ -53,7 +55,8 @@ export const useBookStore = create<BookState>()(
         selected: null,
         saveStatus: 'saved',
 
-        open(book) {
+        open(opened) {
+          const book = withLibrary(opened);
           openedBook = book;
           set({ book, selected: null, saveStatus: 'saved' });
           useBookStore.temporal.getState().clear();
@@ -141,7 +144,12 @@ export const useBookStore = create<BookState>()(
         setBackground: (ref, assetId) => editItem(ref, (i) => ({ ...i, backgroundAssetId: assetId, bgFrame: undefined })),
         setBgFrame: (ref, frame) => editItem(ref, (i) => ({ ...i, bgFrame: frame })),
         setPhotoSide: (ref, side) => editItem(ref, (i) => ({ ...i, photoSide: side })),
-        addElement: (ref, el) => editItem(ref, (i) => ({ ...i, elements: [...i.elements, el] })),
+        addElement: (ref, el, libraryItem) =>
+          edit((b) => {
+            const next = mapItem(b, ref, (i) => ({ ...i, elements: [...i.elements, el] }));
+            return libraryItem ? { ...next, library: [libraryItem, ...(next.library ?? [])] } : next;
+          }),
+        removeFromLibrary: (id) => edit((b) => ({ ...b, library: (b.library ?? []).filter((l) => l.id !== id) })),
         updateElement: (ref, elId, patch) =>
           editItem(ref, (i) => ({
             ...i,

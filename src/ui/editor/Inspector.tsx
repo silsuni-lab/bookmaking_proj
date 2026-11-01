@@ -2,23 +2,30 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { checkBook, issueText } from '../../core/validate';
 import type { AssetDims } from '../../core/drawPlan';
 import { DEFAULT_FRAME, MAX_BG_ZOOM } from '../../core/geometry';
-import { clampPt, newTextElement, pageLabelOf } from '../../core/editorLayout';
+import { clampPt, newImageElement, newTextElement, pageLabelOf, rotateAboutCenter } from '../../core/editorLayout';
+import { isNeutral, NO_ADJUST } from '../../core/adjust';
+import type { ImageAdjust } from '../../core/adjust';
+import { BACKDROP_COLORS } from '../../core/backdrop';
+import type { Backdrop } from '../../core/backdrop';
 import { newId, PAGE_SIZES } from '../../core/model';
-import type { Book, ItemRef, LayoutKind, PageItem, TextElement } from '../../core/model';
+import type { Book, ImageElement, ItemRef, LayoutKind, LibraryItem, PageItem, TextElement } from '../../core/model';
 import { bitmapToJpegBlob, ImageLoadError, loadBitmap, loadErrorMessage } from '../../io/imageLoader';
 import { putAsset } from '../../io/storage';
 import type { StoredAsset } from '../../io/storage';
 import { useBookStore } from '../../state/bookStore';
+import { beginGesture, gestureEdit } from './gestureEdit';
 
 interface Props {
   book: Book;
   itemRef: ItemRef;
   item: PageItem;
   dims: AssetDims;
+  images: Map<string, HTMLImageElement>;
   selectedEl: string | null;
   onSelectEl(id: string | null): void;
   onAsset(asset: StoredAsset): void;
-  onOpenCleanup(role: 'drawing' | 'handwriting'): void;
+  /** Opens the cleanup dialog; with elId, redoes the paper removal of that drawing. */
+  onOpenCleanup(role: 'drawing' | 'handwriting', elId?: string): void;
 }
 
 const LAYOUTS: { id: LayoutKind; label: string }[] = [
@@ -94,7 +101,89 @@ function TextEditor({ el, itemRef }: { el: TextElement; itemRef: ItemRef }) {
   );
 }
 
-export default function Inspector({ book, itemRef, item, dims, selectedEl, onSelectEl, onAsset, onOpenCleanup }: Props) {
+const ADJUSTS: { key: keyof ImageAdjust; label: string }[] = [
+  { key: 'brightness', label: '밝기' },
+  { key: 'contrast', label: '대비' },
+  { key: 'saturation', label: '채도' },
+];
+
+function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; itemRef: ItemRef; onRedo(): void; onRemove(): void }) {
+  const update = useBookStore((s) => s.updateElement);
+  const adjust = el.adjust ?? NO_ADJUST;
+  const noun = el.role === 'drawing' ? '그림' : '손글씨';
+  const setBackdrop = (backdrop: Backdrop | undefined) => update(itemRef, el.id, { backdrop });
+  return (
+    <section className="inspector-group">
+      <h3>선택한 {noun}</h3>
+      <div className="row">
+        <button className="btn" onClick={() => update(itemRef, el.id, rotateAboutCenter(el, -90))}>↺ 왼쪽으로</button>
+        <button className="btn" onClick={() => update(itemRef, el.id, rotateAboutCenter(el, 90))}>↻ 오른쪽으로</button>
+        <button className={`btn${el.flipX ? ' primary' : ''}`} aria-pressed={!!el.flipX} onClick={() => update(itemRef, el.id, { flipX: !el.flipX })}>
+          좌우 뒤집기
+        </button>
+      </div>
+      <fieldset className="field">
+        <legend>뒤 배경 (글씨가 잘 안 보일 때)</legend>
+        {([['none', '없음'], ['box', '색 상자'], ['bubble', '말풍선']] as const).map(([shape, label]) => (
+          <label key={shape} className="radio">
+            <input
+              type="radio" name={`backdrop-${el.id}`} checked={(el.backdrop?.shape ?? 'none') === shape}
+              onChange={() => setBackdrop(shape === 'none' ? undefined : { color: BACKDROP_COLORS[0], ...el.backdrop, shape })}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {el.backdrop && (
+        <div className="field">
+          <span>뒤 배경 색</span>
+          <div className="row">
+            {BACKDROP_COLORS.map((c) => (
+              <button
+                key={c} className={`swatch${el.backdrop!.color === c ? ' on' : ''}`} style={{ background: c }}
+                aria-label={`뒤 배경 색 ${c}`} onClick={() => setBackdrop({ ...el.backdrop!, color: c })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {el.backdrop?.shape === 'bubble' && (
+        <fieldset className="field">
+          <legend>말풍선 꼬리</legend>
+          {([['left', '왼쪽'], ['right', '오른쪽']] as const).map(([tail, label]) => (
+            <label key={tail} className="radio">
+              <input
+                type="radio" name={`tail-${el.id}`} checked={(el.backdrop!.tail ?? 'left') === tail}
+                onChange={() => setBackdrop({ ...el.backdrop!, tail })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+      {ADJUSTS.map(({ key, label }) => (
+        <label key={key} className="field">
+          <span>{label} ({adjust[key] > 0 ? '+' : ''}{adjust[key]})</span>
+          <input
+            type="range" min={-100} max={100} step={5} value={adjust[key]}
+            onPointerDown={beginGesture}
+            onChange={(e) => gestureEdit(() => update(itemRef, el.id, { adjust: { ...adjust, [key]: Number(e.target.value) } }))}
+          />
+        </label>
+      ))}
+      <div className="row">
+        <button className="btn" disabled={isNeutral(el.adjust)} onClick={() => update(itemRef, el.id, { adjust: undefined })}>
+          색 처음대로
+        </button>
+        <button className="btn" disabled={!el.cleanup} onClick={onRedo}>배경 지우기 다시 하기</button>
+      </div>
+      {!el.cleanup && <p className="hint">이 기능이 생기기 전에 넣은 {noun}이라 다시 하려면 새로 넣어 주세요.</p>}
+      <button className="btn danger" onClick={onRemove}>이 {noun} 지우기</button>
+    </section>
+  );
+}
+
+export default function Inspector({ book, itemRef, item, dims, images, selectedEl, onSelectEl, onAsset, onOpenCleanup }: Props) {
   const store = useBookStore.getState;
   const file = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +221,14 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
     } finally {
       setBusy(false);
     }
+  };
+
+  const placeFromLibrary = (l: LibraryItem) => {
+    const d = dims[l.assetId];
+    if (!d) return;
+    const el = newImageElement(item, size, l.assetId, l.role, d.widthPx / d.heightPx);
+    store().addElement(itemRef, l.cleanup ? { ...el, cleanup: l.cleanup } : el);
+    onSelectEl(el.id);
   };
 
   const addText = () => {
@@ -184,12 +281,15 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
       {item.backgroundAssetId && item.layout !== 'blank' && (
         <section className="inspector-group">
           <h3>배경 사진</h3>
-          <p className="hint">페이지의 사진을 마우스로 끌면 위치를 옮길 수 있어요.</p>
+          <p className="hint">
+            사진을 클릭하면 잘려 나간 부분이 흐리게 보이고 페이지 모서리에 손잡이가 생겨요. 사진을 끌면 위치가, 손잡이를 바깥·안쪽으로 끌면 크기가 바뀌어요.
+          </p>
           <label className="field">
             <span>확대</span>
             <input
               type="range" min={1} max={MAX_BG_ZOOM} step={0.1} value={(item.bgFrame ?? DEFAULT_FRAME).zoom}
-              onChange={(e) => store().setBgFrame(itemRef, { ...(item.bgFrame ?? DEFAULT_FRAME), zoom: Number(e.target.value) })}
+              onPointerDown={beginGesture}
+              onChange={(e) => gestureEdit(() => store().setBgFrame(itemRef, { ...(item.bgFrame ?? DEFAULT_FRAME), zoom: Number(e.target.value) }))}
             />
           </label>
           <button className="btn" disabled={!item.bgFrame} onClick={() => store().setBgFrame(itemRef, undefined)}>
@@ -201,13 +301,37 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
       {error && <p className="error" role="alert">{error}</p>}
       {sel?.kind === 'text' && <TextEditor key={sel.id} el={sel} itemRef={itemRef} />}
       {sel?.kind === 'image' && (
-        <section className="inspector-group">
-          <h3>선택한 그림</h3>
-          <button className="btn danger" onClick={() => { store().removeElement(itemRef, sel.id); onSelectEl(null); }}>
-            이 그림 지우기
-          </button>
-        </section>
+        <DrawingEditor
+          key={sel.id} el={sel} itemRef={itemRef}
+          onRedo={() => onOpenCleanup(sel.role, sel.id)}
+          onRemove={() => { store().removeElement(itemRef, sel.id); onSelectEl(null); }}
+        />
       )}
+      <section className="inspector-group">
+        <h3>내 그림 모음</h3>
+        {(book.library ?? []).length === 0 ? (
+          <p className="hint">그림이나 손글씨를 넣으면 여기에 모여요. 눌러서 다른 쪽에도 넣을 수 있어요.</p>
+        ) : (
+          <>
+            <p className="hint">누르면 이 쪽에 넣어요.</p>
+            <ul className="library">
+              {book.library!.map((l, n) => {
+                const noun = l.role === 'drawing' ? '그림' : '손글씨';
+                const img = images.get(l.assetId);
+                return (
+                  <li key={l.id}>
+                    <button className="library-add checker" aria-label={`모음의 ${noun} ${n + 1} 넣기`} onClick={() => placeFromLibrary(l)}>
+                      {img ? <img src={img.src} alt="" /> : <span>…</span>}
+                    </button>
+                    <button className="library-remove" aria-label={`모음에서 ${noun} ${n + 1} 빼기`} title="모음에서 빼기"
+                      onClick={() => store().removeFromLibrary(l.id)}>×</button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </section>
       {issues.length > 0 && (
         <section className="inspector-group">
           <h3>확인해 주세요</h3>

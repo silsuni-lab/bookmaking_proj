@@ -18,7 +18,8 @@ export function useBookAssets(bookId: string): BookAssets {
   const alive = useRef(true);
 
   const register = useCallback((assets: StoredAsset[]) => {
-    const loaded = assets.map(
+    // Original photos and masks are only needed when redoing a cleanup; don't decode them for the canvas.
+    const loaded = assets.filter((a) => a.kind === 'photo' || a.kind === 'cutout').map(
       (a) =>
         new Promise<[StoredAsset, HTMLImageElement | null]>((resolve) => {
           const url = URL.createObjectURL(a.blob);

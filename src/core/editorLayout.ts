@@ -69,6 +69,23 @@ export function foldScale(
   return { width: Math.max(1, w * Math.abs(scaleX)), height: Math.max(1, h * Math.abs(scaleY)) };
 }
 
+/** Rotates by `delta` degrees about the box centre (rotation itself is stored about the top-left, like Konva). */
+export function rotateAboutCenter(
+  el: { x: number; y: number; width: number; height: number; rotation: number },
+  delta: number,
+): { x: number; y: number; rotation: number } {
+  const hw = el.width / 2, hh = el.height / 2;
+  const offset = (deg: number) => {
+    const r = (deg * Math.PI) / 180;
+    return { x: hw * Math.cos(r) - hh * Math.sin(r), y: hw * Math.sin(r) + hh * Math.cos(r) };
+  };
+  const o0 = offset(el.rotation);
+  const cx = el.x + o0.x, cy = el.y + o0.y;
+  const rotation = (((el.rotation + delta) % 360) + 360) % 360;
+  const o1 = offset(rotation);
+  return { x: cx - o1.x, y: cy - o1.y, rotation };
+}
+
 export const MM_PER_PT = 25.4 / 72;
 export const clampPt = (pt: number) => clamp(Math.round(pt), 6, 120);
 

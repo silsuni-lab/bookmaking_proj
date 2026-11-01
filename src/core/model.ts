@@ -1,4 +1,7 @@
+import type { ImageAdjust } from './adjust';
+import type { Backdrop } from './backdrop';
 import type { BgFrame } from './geometry';
+import type { Quad } from './perspective';
 
 
 export const BLEED_MM = 3;
@@ -31,10 +34,23 @@ interface ElementBase {
   height: number;
   rotation: number;
 }
+/** What a cutout was made from, so the paper removal can be redone later. Absent on drawings added before this existed. */
+export interface CleanupSource {
+  sourceAssetId: string;
+  /** Paper corners in source pixels; null = corners step skipped. */
+  quad: Quad | null;
+  strength: number;
+  /** Touch-up brush mask (grey PNG); null = no brush strokes. */
+  maskAssetId: string | null;
+}
 export interface ImageElement extends ElementBase {
   kind: 'image';
   assetId: string;
   role: 'drawing' | 'handwriting';
+  flipX?: boolean;
+  adjust?: ImageAdjust;
+  backdrop?: Backdrop;
+  cleanup?: CleanupSource;
 }
 export interface TextElement extends ElementBase {
   kind: 'text';
@@ -56,6 +72,14 @@ export interface PageItem {
   elements: PageElement[];
 }
 
+/** A drawing or handwriting kept in the book's collection so it can be placed on more pages. */
+export interface LibraryItem {
+  id: string;
+  assetId: string;
+  role: 'drawing' | 'handwriting';
+  cleanup?: CleanupSource;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -63,6 +87,8 @@ export interface Book {
   sizeId: PageSizeId;
   cover: { front: PageItem; back: PageItem };
   items: PageItem[];
+  /** Newest first. Absent on books saved before the collection existed (see withLibrary). */
+  library?: LibraryItem[];
   updatedAt: number;
 }
 
@@ -71,7 +97,8 @@ export interface Asset {
   blob: Blob;
   widthPx: number;
   heightPx: number;
-  kind: 'photo' | 'cutout';
+  /** source = original photo of a drawing (JPEG); mask = touch-up mask (PNG). Neither is drawn directly. */
+  kind: 'photo' | 'cutout' | 'source' | 'mask';
 }
 
 export type ItemRef = { kind: 'cover'; which: 'front' | 'back' } | { kind: 'item'; id: string };
@@ -84,12 +111,41 @@ export function newItem(layout: LayoutKind): PageItem {
   return { id: newId(), layout, backgroundAssetId: null, photoSide: 'left', elements: [] };
 }
 
-/** Ids of every asset the book uses (backgrounds and image elements of covers and pages). */
+/** Gives an older book a collection made of the drawings already on its pages (one per cutout). */
+export function withLibrary(book: Book): Book {
+  if (book.library) return book;
+  const seen = new Set<string>();
+  const library: LibraryItem[] = [];
+  for (const item of [book.cover.front, book.cover.back, ...book.items]) {
+    for (const e of item.elements) {
+      if (e.kind !== 'image' || seen.has(e.assetId)) continue;
+      seen.add(e.assetId);
+      library.push({ id: newId(), assetId: e.assetId, role: e.role, ...(e.cleanup ? { cleanup: e.cleanup } : {}) });
+    }
+  }
+  return { ...book, library };
+}
+
+/** Ids of every asset the book uses (backgrounds, image elements, and the drawing collection). */
 export function referencedAssetIds(book: Book): Set<string> {
   const ids = new Set<string>();
+  for (const l of book.library ?? []) {
+    ids.add(l.assetId);
+    if (l.cleanup) {
+      ids.add(l.cleanup.sourceAssetId);
+      if (l.cleanup.maskAssetId) ids.add(l.cleanup.maskAssetId);
+    }
+  }
   for (const item of [book.cover.front, book.cover.back, ...book.items]) {
     if (item.backgroundAssetId) ids.add(item.backgroundAssetId);
-    for (const e of item.elements) if (e.kind === 'image') ids.add(e.assetId);
+    for (const e of item.elements) {
+      if (e.kind !== 'image') continue;
+      ids.add(e.assetId);
+      if (e.cleanup) {
+        ids.add(e.cleanup.sourceAssetId);
+        if (e.cleanup.maskAssetId) ids.add(e.cleanup.maskAssetId);
+      }
+    }
   }
   return ids;
 }
@@ -137,6 +193,7 @@ export function newBook(sizeId: PageSizeId, title = '', childName = ''): Book {
     childName,
     sizeId,
     cover: { front, back: newItem('full') },
+    library: [],
     items: [],
     updatedAt: Date.now(),
   };

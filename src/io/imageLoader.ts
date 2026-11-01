@@ -58,6 +58,24 @@ export async function rawToPngBlob(img: RawImage): Promise<Blob> {
   return canvas.convertToBlob({ type: 'image/png' });
 }
 
+export async function rawToJpegBlob(img: RawImage): Promise<Blob> {
+  const canvas = new OffscreenCanvas(img.width, img.height);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D 캔버스를 만들 수 없어요 (OffscreenCanvas 2d context is null)');
+  ctx.putImageData(new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), 0, 0);
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: 0.92 });
+}
+
+/** Decodes a stored image at its exact size (no downscaling). */
+export async function blobToRaw(blob: Blob): Promise<RawImage> {
+  const bmp = await createImageBitmap(blob);
+  try {
+    return await bitmapToRaw(bmp, Math.max(bmp.width, bmp.height));
+  } finally {
+    bmp.close();
+  }
+}
+
 /** Encodes the bitmap as JPEG (downscaled to ≤ max px); width/height are the encoded image's real size. */
 export async function bitmapToJpegBlob(
   bmp: ImageBitmap,

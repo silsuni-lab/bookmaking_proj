@@ -135,9 +135,118 @@ test('background photo can be dragged, zoomed and reset', async ({ page }) => {
   await page.mouse.up();
   await expect.poll(async () => (await frame())?.cy ?? 0.5).toBeGreaterThan(0.5);
 
+  // Click the photo to select it, then drag the bottom-right page-corner handle outward: the photo grows
+  const pageMm = 206; // 200mm square + bleed
+  const sc = Math.min((box.width - 48) / pageMm, (box.height - 48) / pageMm);
+  const offX = box.x + (box.width - pageMm * sc) / 2;
+  const offY = box.y + (box.height - pageMm * sc) / 2;
+  await page.mouse.click(x, y);
+  const hx = offX + pageMm * sc, hy = offY + pageMm * sc;
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx + 200, hy + 200, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await frame())?.zoom ?? 1).toBeGreaterThan(1.2);
+  // dragging inward past the start can never shrink the photo below the page
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx - 300, hy - 300, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await frame())?.zoom).toBe(1);
+
   await page.getByLabel('확대').fill('2');
   await expect.poll(async () => (await frame())?.zoom).toBe(2);
 
   await page.getByRole('button', { name: '처음 위치로' }).click();
   await expect.poll(frame).toBeUndefined();
+});
+
+test('a placed drawing can be rotated, flipped, colour-tweaked and re-cleaned', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/');
+  await page.getByRole('button', { name: '새 책 만들기' }).click();
+  const setup = page.getByRole('dialog', { name: '새 책 만들기' });
+  await setup.getByLabel('책 제목').fill('그림 편집');
+  await setup.getByLabel('아이 이름').fill('하준');
+  await setup.getByRole('button', { name: '만들기' }).click();
+
+  await page.getByRole('button', { name: '그림 넣기' }).click();
+  const add = page.getByRole('dialog', { name: '그림 넣기' });
+  await add.getByTestId('cleanup-file').setInputFiles(DRAWING);
+  await add.getByRole('button', { name: '다음', exact: true }).click();
+  await add.getByRole('button', { name: '다음', exact: true }).click();
+  // one eraser stroke, which must survive the redo
+  const paint = (await add.locator('canvas.paint').boundingBox())!;
+  await page.mouse.move(paint.x + paint.width * 0.2, paint.y + paint.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(paint.x + paint.width * 0.4, paint.y + paint.height * 0.3, { steps: 5 });
+  await page.mouse.up();
+  await add.getByRole('button', { name: '완료' }).click();
+  await expect(add).toBeHidden();
+
+  const drawing = async () => (await readDb(page)).books[0]?.cover.front.elements.find((e: { kind: string }) => e.kind === 'image');
+  await expect.poll(async () => (await drawing())?.cleanup?.sourceAssetId).toBeTruthy();
+  const first = await drawing();
+  expect(first.cleanup.quad).toHaveLength(4);
+  expect(first.cleanup.maskAssetId).toBeTruthy();
+
+  await page.getByRole('button', { name: '↻ 오른쪽으로' }).click();
+  await page.getByRole('button', { name: '좌우 뒤집기' }).click();
+  await page.getByLabel(/^밝기/).fill('30');
+  await expect.poll(async () => {
+    const d = await drawing();
+    return d && { rotation: d.rotation, flipX: d.flipX, brightness: d.adjust?.brightness };
+  }).toEqual({ rotation: 90, flipX: true, brightness: 30 });
+
+  // A speech bubble behind it, yellow, tail on the right
+  await page.getByRole('radio', { name: '말풍선' }).check();
+  await page.getByRole('button', { name: '뒤 배경 색 #FFF4B8' }).click();
+  await page.getByRole('radio', { name: '오른쪽' }).check();
+  await expect.poll(async () => (await drawing())?.backdrop).toEqual({ shape: 'bubble', color: '#FFF4B8', tail: 'right' });
+
+  // Redo the paper removal from the saved original: opens straight at the paper step
+  const beforeRedo = await drawing();
+  await page.getByRole('button', { name: '배경 지우기 다시 하기' }).click();
+  const redo = page.getByRole('dialog', { name: '그림 배경 다시 지우기' });
+  await expect(redo.getByText('지우기 강도')).toBeVisible();
+  await redo.getByRole('button', { name: '다음', exact: true }).click();
+  await redo.getByRole('button', { name: '완료' }).click();
+  await expect(redo).toBeHidden();
+  await expect.poll(async () => (await drawing())?.assetId).not.toBe(first.assetId);
+  const after = await drawing();
+  expect(after.cleanup.sourceAssetId).toBe(first.cleanup.sourceAssetId); // the original is reused, not copied
+  expect(after.cleanup.maskAssetId).toBeTruthy(); // the saved brush strokes were restored and kept
+  const keep = (d: any) => ({ x: d.x, y: d.y, width: d.width, rotation: d.rotation, flipX: d.flipX, adjust: d.adjust });
+  expect(keep(after)).toEqual(keep(beforeRedo));
+
+  // Dragging a colour slider is one undo step
+  const slider = (await page.getByLabel(/^대비/).boundingBox())!;
+  await page.mouse.move(slider.x + slider.width / 2, slider.y + slider.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(slider.x + slider.width * 0.7, slider.y + slider.height / 2, { steps: 6 });
+  await page.mouse.move(slider.x + slider.width * 0.9, slider.y + slider.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await drawing())?.adjust?.contrast).toBeGreaterThan(40);
+  await page.getByRole('heading', { name: '선택한 그림' }).click(); // move focus off the slider
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(async () => (await drawing())?.adjust?.contrast).toBe(0);
+  expect((await drawing()).adjust.brightness).toBe(30);
+
+  // The drawing was saved to the collection; place it on a new page from there
+  const book = async () => (await readDb(page)).books[0];
+  expect((await book()).library).toHaveLength(1);
+  const libAsset = (await book()).library[0].assetId;
+  await page.getByRole('button', { name: '+ 쪽 추가' }).click();
+  await expect(page.getByRole('heading', { name: '1쪽', level: 2 })).toBeVisible();
+  await page.getByRole('button', { name: '모음의 그림 1 넣기' }).click();
+  await expect.poll(async () => (await book())?.items[0]?.elements.map((e: { assetId?: string }) => e.assetId)).toEqual([libAsset]);
+  expect((await book()).items[0].elements[0].cleanup?.sourceAssetId).toBeTruthy(); // can still redo the cleanup there
+
+  // Taking it out of the collection keeps it on the pages
+  await page.getByRole('button', { name: '모음에서 그림 1 빼기' }).click();
+  await expect.poll(async () => (await book()).library).toHaveLength(0);
+  expect((await book()).items[0].elements).toHaveLength(1);
+  expect(errors).toEqual([]);
 });
