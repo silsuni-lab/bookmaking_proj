@@ -121,6 +121,20 @@ export async function renderOps(
         }
         break;
       }
+      case 'backdrop': {
+        rotateAboutTopLeft(ctx, op.rect, op.rotation);
+        ctx.translate(op.rect.x, op.rect.y);
+        const path = new Path2D(op.path);
+        ctx.fillStyle = op.color;
+        ctx.fill(path);
+        if (op.stroke) {
+          ctx.strokeStyle = op.stroke.color;
+          ctx.lineWidth = op.stroke.widthMm;
+          ctx.lineJoin = 'round';
+          ctx.stroke(path);
+        }
+        break;
+      }
       case 'band':
         rotateAboutTopLeft(ctx, op.rect, op.rotation);
         clipToRect(ctx, op.rect);

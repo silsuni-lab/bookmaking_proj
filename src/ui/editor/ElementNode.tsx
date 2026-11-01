@@ -1,4 +1,5 @@
-import { Group, Image as KImage, Rect, Text } from 'react-konva';
+import { Group, Image as KImage, Path, Rect, Text } from 'react-konva';
+import { backdropPath, BUBBLE_STROKE } from '../../core/backdrop';
 import type Konva from 'konva';
 import { foldScale, MM_PER_PT } from '../../core/editorLayout';
 import type { PageElement } from '../../core/model';
@@ -39,6 +40,12 @@ export default function ElementNode({ el, image, register, onSelect, onCommit }:
       }}
     >
       <Rect width={el.width} height={el.height} fill="rgba(0,0,0,0.001)" />
+      {el.kind === 'image' && el.backdrop && (
+        <Path
+          data={backdropPath(el.backdrop, el.width, el.height)} fill={el.backdrop.color} lineJoin="round"
+          {...(el.backdrop.shape === 'bubble' ? { stroke: BUBBLE_STROKE.color, strokeWidth: BUBBLE_STROKE.widthMm } : {})}
+        />
+      )}
       {el.kind === 'image' && image && (
         <KImage image={image} width={el.width} height={el.height} x={el.flipX ? el.width : 0} scaleX={el.flipX ? -1 : 1} />
       )}

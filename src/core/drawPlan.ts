@@ -1,4 +1,5 @@
 import { isNeutral } from './adjust';
+import { backdropPath, BUBBLE_STROKE } from './backdrop';
 import type { ImageAdjust } from './adjust';
 import { BLEED_MM, itemCanvasMm } from './model';
 import type { PageItem, PageSize } from './model';
@@ -10,6 +11,8 @@ export type DrawOp =
   | { op: 'fill'; color: string; rect: Rect }
   // src null = whole image; flipX mirrors inside dest; adjust = colour tweaks (both only on drawings)
   | { op: 'image'; assetId: string; src: Rect | null; dest: Rect; rotation: number; flipX?: true; adjust?: ImageAdjust }
+  // path: SVG path relative to rect's top-left (mm); rotates about that corner like the element
+  | { op: 'backdrop'; path: string; rect: Rect; color: string; stroke: { color: string; widthMm: number } | null; rotation: number }
   | { op: 'band'; rect: Rect; color: 'rgba(255,255,255,0.75)'; radiusMm: 2; rotation: number }
   | { op: 'text'; text: string; rect: Rect; fontSizePt: number; color: string; rotation: number; font: 'Gaegu' };
 
@@ -56,6 +59,12 @@ export function planItem(
     const rect: Rect = { x: el.x + BLEED_MM, y: el.y + BLEED_MM, width: el.width, height: el.height };
     if (el.kind === 'image') {
       if (!dims[el.assetId]) continue;
+      if (el.backdrop) {
+        ops.push({
+          op: 'backdrop', path: backdropPath(el.backdrop, el.width, el.height), rect: { ...rect }, color: el.backdrop.color,
+          stroke: el.backdrop.shape === 'bubble' ? BUBBLE_STROKE : null, rotation: el.rotation,
+        });
+      }
       ops.push({
         op: 'image', assetId: el.assetId, src: null, dest: rect, rotation: el.rotation,
         ...(el.flipX ? { flipX: true as const } : {}),

@@ -5,6 +5,8 @@ import { DEFAULT_FRAME, MAX_BG_ZOOM } from '../../core/geometry';
 import { clampPt, newTextElement, pageLabelOf, rotateAboutCenter } from '../../core/editorLayout';
 import { isNeutral, NO_ADJUST } from '../../core/adjust';
 import type { ImageAdjust } from '../../core/adjust';
+import { BACKDROP_COLORS } from '../../core/backdrop';
+import type { Backdrop } from '../../core/backdrop';
 import { newId, PAGE_SIZES } from '../../core/model';
 import type { Book, ImageElement, ItemRef, LayoutKind, PageItem, TextElement } from '../../core/model';
 import { bitmapToJpegBlob, ImageLoadError, loadBitmap, loadErrorMessage } from '../../io/imageLoader';
@@ -108,6 +110,7 @@ function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; it
   const update = useBookStore((s) => s.updateElement);
   const adjust = el.adjust ?? NO_ADJUST;
   const noun = el.role === 'drawing' ? '그림' : '손글씨';
+  const setBackdrop = (backdrop: Backdrop | undefined) => update(itemRef, el.id, { backdrop });
   return (
     <section className="inspector-group">
       <h3>선택한 {noun}</h3>
@@ -118,6 +121,45 @@ function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; it
           좌우 뒤집기
         </button>
       </div>
+      <fieldset className="field">
+        <legend>뒤 배경 (글씨가 잘 안 보일 때)</legend>
+        {([['none', '없음'], ['box', '색 상자'], ['bubble', '말풍선']] as const).map(([shape, label]) => (
+          <label key={shape} className="radio">
+            <input
+              type="radio" name={`backdrop-${el.id}`} checked={(el.backdrop?.shape ?? 'none') === shape}
+              onChange={() => setBackdrop(shape === 'none' ? undefined : { color: BACKDROP_COLORS[0], ...el.backdrop, shape })}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {el.backdrop && (
+        <div className="field">
+          <span>뒤 배경 색</span>
+          <div className="row">
+            {BACKDROP_COLORS.map((c) => (
+              <button
+                key={c} className={`swatch${el.backdrop!.color === c ? ' on' : ''}`} style={{ background: c }}
+                aria-label={`뒤 배경 색 ${c}`} onClick={() => setBackdrop({ ...el.backdrop!, color: c })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {el.backdrop?.shape === 'bubble' && (
+        <fieldset className="field">
+          <legend>말풍선 꼬리</legend>
+          {([['left', '왼쪽'], ['right', '오른쪽']] as const).map(([tail, label]) => (
+            <label key={tail} className="radio">
+              <input
+                type="radio" name={`tail-${el.id}`} checked={(el.backdrop!.tail ?? 'left') === tail}
+                onChange={() => setBackdrop({ ...el.backdrop!, tail })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
       {ADJUSTS.map(({ key, label }) => (
         <label key={key} className="field">
           <span>{label} ({adjust[key] > 0 ? '+' : ''}{adjust[key]})</span>
@@ -230,7 +272,9 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
       {item.backgroundAssetId && item.layout !== 'blank' && (
         <section className="inspector-group">
           <h3>배경 사진</h3>
-          <p className="hint">페이지의 사진을 마우스로 끌면 위치를 옮길 수 있어요.</p>
+          <p className="hint">
+            사진을 클릭하면 잘려 나간 부분이 흐리게 보이고 페이지 모서리에 손잡이가 생겨요. 사진을 끌면 위치가, 손잡이를 바깥·안쪽으로 끌면 크기가 바뀌어요.
+          </p>
           <label className="field">
             <span>확대</span>
             <input

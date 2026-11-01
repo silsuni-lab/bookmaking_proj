@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planItem } from '../../src/core/drawPlan';
+import { backdropPath } from '../../src/core/backdrop';
 import { PAGE_SIZES, newItem } from '../../src/core/model';
 import type { TextElement } from '../../src/core/model';
 
@@ -68,6 +69,20 @@ describe('planItem', () => {
     expect(ops[1]).toMatchObject({ flipX: true, adjust: { brightness: 10, contrast: 0, saturation: 0 } });
     expect(ops[2]).not.toHaveProperty('flipX');
     expect(ops[2]).not.toHaveProperty('adjust');
+  });
+
+  it('backdrop op is drawn right before its drawing, rotating with it', () => {
+    const item = newItem('full');
+    item.elements.push({
+      id: 'a', kind: 'image', assetId: 'x', role: 'handwriting', x: 5, y: 6, width: 40, height: 20, rotation: 10,
+      backdrop: { shape: 'bubble', color: '#FFF4B8', tail: 'right' },
+    });
+    const { ops } = planItem(item, PAGE_SIZES.sq200, { x: { widthPx: 10, heightPx: 10 } });
+    expect(ops.map((o) => o.op)).toEqual(['fill', 'backdrop', 'image']);
+    expect(ops[1]).toMatchObject({
+      rect: { x: 8, y: 9, width: 40, height: 20 }, rotation: 10, color: '#FFF4B8', stroke: { color: '#333333', widthMm: 0.6 },
+    });
+    expect((ops[1] as { path: string }).path).toBe(backdropPath({ shape: 'bubble', color: '#FFF4B8', tail: 'right' }, 40, 20));
   });
 
   it('spread photoSide left: photo covers outer bleed + left page, cream the rest', () => {

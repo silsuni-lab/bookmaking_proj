@@ -135,6 +135,25 @@ test('background photo can be dragged, zoomed and reset', async ({ page }) => {
   await page.mouse.up();
   await expect.poll(async () => (await frame())?.cy ?? 0.5).toBeGreaterThan(0.5);
 
+  // Click the photo to select it, then drag the bottom-right page-corner handle outward: the photo grows
+  const pageMm = 206; // 200mm square + bleed
+  const sc = Math.min((box.width - 48) / pageMm, (box.height - 48) / pageMm);
+  const offX = box.x + (box.width - pageMm * sc) / 2;
+  const offY = box.y + (box.height - pageMm * sc) / 2;
+  await page.mouse.click(x, y);
+  const hx = offX + pageMm * sc, hy = offY + pageMm * sc;
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx + 200, hy + 200, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await frame())?.zoom ?? 1).toBeGreaterThan(1.2);
+  // dragging inward past the start can never shrink the photo below the page
+  await page.mouse.move(hx, hy);
+  await page.mouse.down();
+  await page.mouse.move(hx - 300, hy - 300, { steps: 8 });
+  await page.mouse.up();
+  await expect.poll(async () => (await frame())?.zoom).toBe(1);
+
   await page.getByLabel('확대').fill('2');
   await expect.poll(async () => (await frame())?.zoom).toBe(2);
 
@@ -180,6 +199,12 @@ test('a placed drawing can be rotated, flipped, colour-tweaked and re-cleaned', 
     const d = await drawing();
     return d && { rotation: d.rotation, flipX: d.flipX, brightness: d.adjust?.brightness };
   }).toEqual({ rotation: 90, flipX: true, brightness: 30 });
+
+  // A speech bubble behind it, yellow, tail on the right
+  await page.getByRole('radio', { name: '말풍선' }).check();
+  await page.getByRole('button', { name: '뒤 배경 색 #FFF4B8' }).click();
+  await page.getByRole('radio', { name: '오른쪽' }).check();
+  await expect.poll(async () => (await drawing())?.backdrop).toEqual({ shape: 'bubble', color: '#FFF4B8', tail: 'right' });
 
   // Redo the paper removal from the saved original: opens straight at the paper step
   const beforeRedo = await drawing();

@@ -1,4 +1,5 @@
 import type { ImageAdjust } from './adjust';
+import type { Backdrop } from './backdrop';
 import type { BgFrame } from './geometry';
 import type { Quad } from './perspective';
 
@@ -48,6 +49,7 @@ export interface ImageElement extends ElementBase {
   role: 'drawing' | 'handwriting';
   flipX?: boolean;
   adjust?: ImageAdjust;
+  backdrop?: Backdrop;
   cleanup?: CleanupSource;
 }
 export interface TextElement extends ElementBase {
