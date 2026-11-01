@@ -37,6 +37,16 @@ describe('adjustPixels', () => {
   });
 });
 
+describe('white ink', () => {
+  it('turns every pixel white but keeps its transparency', () => {
+    const d = px(20, 30, 40, 255, 200, 10, 10, 90, 0, 0, 0, 0);
+    adjustPixels(d, { brightness: 0, contrast: 0, saturation: 0, toWhite: true });
+    expect([...d]).toEqual([255, 255, 255, 255, 255, 255, 255, 90, 255, 255, 255, 0]);
+    expect(isNeutral({ brightness: 0, contrast: 0, saturation: 0, toWhite: true })).toBe(false);
+    expect(isNeutral({ brightness: 0, contrast: 0, saturation: 0, toWhite: false })).toBe(true);
+  });
+});
+
 describe('mask image encoding', () => {
   it('round-trips the three mask values through grey RGBA', () => {
     const mask = new Uint8Array([MASK_AUTO, MASK_ERASE, MASK_RESTORE, MASK_ERASE]);

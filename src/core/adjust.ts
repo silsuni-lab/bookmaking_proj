@@ -5,12 +5,14 @@ export interface ImageAdjust {
   brightness: number;
   contrast: number;
   saturation: number;
+  /** Recolour to white (shape and transparency kept), e.g. dark handwriting on a dark photo. */
+  toWhite?: boolean;
 }
 
 export const NO_ADJUST: ImageAdjust = { brightness: 0, contrast: 0, saturation: 0 };
 
 export function isNeutral(a: ImageAdjust | undefined): boolean {
-  return !a || (a.brightness === 0 && a.contrast === 0 && a.saturation === 0);
+  return !a || (a.brightness === 0 && a.contrast === 0 && a.saturation === 0 && !a.toWhite);
 }
 
 /**
@@ -18,6 +20,10 @@ export function isNeutral(a: ImageAdjust | undefined): boolean {
  * Brightness moves toward white (+) or black (−) so dark crayon lines stay dark when lightening.
  */
 export function adjustPixels(data: Uint8ClampedArray, a: ImageAdjust): void {
+  if (a.toWhite) {
+    for (let i = 0; i < data.length; i += 4) data[i] = data[i + 1] = data[i + 2] = 255;
+    return;
+  }
   const s = 1 + a.saturation / 100;
   const c = 1 + a.contrast / 100;
   const b = a.brightness / 100;

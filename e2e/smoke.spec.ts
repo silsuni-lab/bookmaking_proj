@@ -200,6 +200,13 @@ test('a placed drawing can be rotated, flipped, colour-tweaked and re-cleaned', 
     return d && { rotation: d.rotation, flipX: d.flipX, brightness: d.adjust?.brightness };
   }).toEqual({ rotation: 90, flipX: true, brightness: 30 });
 
+  // White ink on, then off again (keeps the other colour settings)
+  await page.getByRole('checkbox', { name: /흰색으로 바꾸기/ }).check();
+  await expect.poll(async () => (await drawing())?.adjust?.toWhite).toBe(true);
+  await expect(page.getByLabel(/^밝기/)).toBeHidden();
+  await page.getByRole('checkbox', { name: /흰색으로 바꾸기/ }).uncheck();
+  await expect.poll(async () => (await drawing())?.adjust).toEqual({ brightness: 30, contrast: 0, saturation: 0, toWhite: false });
+
   // A speech bubble behind it, yellow, tail on the right
   await page.getByRole('radio', { name: '말풍선' }).check();
   await page.getByRole('button', { name: '뒤 배경 색 #FFF4B8' }).click();
