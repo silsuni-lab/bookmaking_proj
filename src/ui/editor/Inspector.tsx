@@ -92,10 +92,16 @@ function TextEditor({ el, itemRef }: { el: TextElement; itemRef: ItemRef }) {
           ))}
         </div>
       </div>
-      <label className="radio">
-        <input type="checkbox" checked={el.band} onChange={(e) => update(itemRef, el.id, { band: e.target.checked })} />
-        글자 뒤 흰 띠
-      </label>
+      <BackdropControls
+        id={el.id} backdrop={el.backdrop}
+        onChange={(backdrop) => update(itemRef, el.id, backdrop ? { backdrop, band: false } : { backdrop })}
+      />
+      {!el.backdrop && (
+        <label className="radio">
+          <input type="checkbox" checked={el.band} onChange={(e) => update(itemRef, el.id, { band: e.target.checked })} />
+          글자 뒤 흰 띠
+        </label>
+      )}
       <button className="btn danger" onClick={() => remove(itemRef, el.id)}>이 글자 지우기</button>
     </section>
   );
@@ -106,6 +112,53 @@ const ADJUSTS: { key: Exclude<keyof ImageAdjust, 'toWhite'>; label: string }[] =
   { key: 'contrast', label: '대비' },
   { key: 'saturation', label: '채도' },
 ];
+
+/** None / colour box / speech bubble behind a drawing or text, with its colour and the bubble's tail side. */
+function BackdropControls({ id, backdrop, onChange }: { id: string; backdrop?: Backdrop; onChange(b: Backdrop | undefined): void }) {
+  return (
+    <>
+      <fieldset className="field">
+        <legend>뒤 배경 (글씨가 잘 안 보일 때)</legend>
+        {([['none', '없음'], ['box', '색 상자'], ['bubble', '말풍선']] as const).map(([shape, label]) => (
+          <label key={shape} className="radio">
+            <input
+              type="radio" name={`backdrop-${id}`} checked={(backdrop?.shape ?? 'none') === shape}
+              onChange={() => onChange(shape === 'none' ? undefined : { color: BACKDROP_COLORS[0], ...backdrop, shape })}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {backdrop && (
+        <div className="field">
+          <span>뒤 배경 색</span>
+          <div className="row">
+            {BACKDROP_COLORS.map((c) => (
+              <button
+                key={c} className={`swatch${backdrop.color === c ? ' on' : ''}`} style={{ background: c }}
+                aria-label={`뒤 배경 색 ${c}`} onClick={() => onChange({ ...backdrop, color: c })}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {backdrop?.shape === 'bubble' && (
+        <fieldset className="field">
+          <legend>말풍선 꼬리</legend>
+          {([['left', '왼쪽'], ['right', '오른쪽']] as const).map(([tail, label]) => (
+            <label key={tail} className="radio">
+              <input
+                type="radio" name={`tail-${id}`} checked={(backdrop.tail ?? 'left') === tail}
+                onChange={() => onChange({ ...backdrop, tail })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+      )}
+    </>
+  );
+}
 
 function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; itemRef: ItemRef; onRedo(): void; onRemove(): void }) {
   const update = useBookStore((s) => s.updateElement);
@@ -122,45 +175,7 @@ function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; it
           좌우 뒤집기
         </button>
       </div>
-      <fieldset className="field">
-        <legend>뒤 배경 (글씨가 잘 안 보일 때)</legend>
-        {([['none', '없음'], ['box', '색 상자'], ['bubble', '말풍선']] as const).map(([shape, label]) => (
-          <label key={shape} className="radio">
-            <input
-              type="radio" name={`backdrop-${el.id}`} checked={(el.backdrop?.shape ?? 'none') === shape}
-              onChange={() => setBackdrop(shape === 'none' ? undefined : { color: BACKDROP_COLORS[0], ...el.backdrop, shape })}
-            />
-            {label}
-          </label>
-        ))}
-      </fieldset>
-      {el.backdrop && (
-        <div className="field">
-          <span>뒤 배경 색</span>
-          <div className="row">
-            {BACKDROP_COLORS.map((c) => (
-              <button
-                key={c} className={`swatch${el.backdrop!.color === c ? ' on' : ''}`} style={{ background: c }}
-                aria-label={`뒤 배경 색 ${c}`} onClick={() => setBackdrop({ ...el.backdrop!, color: c })}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      {el.backdrop?.shape === 'bubble' && (
-        <fieldset className="field">
-          <legend>말풍선 꼬리</legend>
-          {([['left', '왼쪽'], ['right', '오른쪽']] as const).map(([tail, label]) => (
-            <label key={tail} className="radio">
-              <input
-                type="radio" name={`tail-${el.id}`} checked={(el.backdrop!.tail ?? 'left') === tail}
-                onChange={() => setBackdrop({ ...el.backdrop!, tail })}
-              />
-              {label}
-            </label>
-          ))}
-        </fieldset>
-      )}
+      <BackdropControls id={el.id} backdrop={el.backdrop} onChange={setBackdrop} />
       <label className="radio">
         <input
           type="checkbox" checked={!!adjust.toWhite}

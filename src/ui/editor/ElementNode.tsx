@@ -40,7 +40,7 @@ export default function ElementNode({ el, image, register, onSelect, onCommit }:
       }}
     >
       <Rect width={el.width} height={el.height} fill="rgba(0,0,0,0.001)" />
-      {el.kind === 'image' && el.backdrop && (
+      {el.backdrop && (
         <Path
           data={backdropPath(el.backdrop, el.width, el.height)} fill={el.backdrop.color} lineJoin="round"
           {...(el.backdrop.shape === 'bubble' ? { stroke: BUBBLE_STROKE.color, strokeWidth: BUBBLE_STROKE.widthMm } : {})}

@@ -85,6 +85,18 @@ describe('planItem', () => {
     expect((ops[1] as { path: string }).path).toBe(backdropPath({ shape: 'bubble', color: '#FFF4B8', tail: 'right' }, 40, 20));
   });
 
+  it('text with a bubble: backdrop op directly before the text', () => {
+    const item = newItem('full');
+    const t: TextElement = {
+      id: 't', kind: 'text', x: 10, y: 20, width: 50, height: 20, rotation: 0,
+      text: 'hi', fontSizePt: 14, color: '#222222', band: false, backdrop: { shape: 'bubble', color: '#FFFFFF' },
+    };
+    item.elements.push(t);
+    const { ops } = planItem(item, PAGE_SIZES.sq200, {});
+    expect(ops.map((o) => o.op)).toEqual(['fill', 'backdrop', 'text']);
+    expect(ops[1]).toMatchObject({ rect: { x: 13, y: 23, width: 50, height: 20 }, color: '#FFFFFF' });
+  });
+
   it('spread photoSide left: photo covers outer bleed + left page, cream the rest', () => {
     const item = newItem('spread');
     item.backgroundAssetId = 'p';

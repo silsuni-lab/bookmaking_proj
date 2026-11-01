@@ -58,6 +58,7 @@ export interface TextElement extends ElementBase {
   fontSizePt: number;
   color: string;
   band: boolean;
+  backdrop?: Backdrop;
 }
 export type PageElement = ImageElement | TextElement;
 
