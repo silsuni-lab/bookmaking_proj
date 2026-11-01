@@ -101,7 +101,7 @@ function TextEditor({ el, itemRef }: { el: TextElement; itemRef: ItemRef }) {
   );
 }
 
-const ADJUSTS: { key: keyof ImageAdjust; label: string }[] = [
+const ADJUSTS: { key: Exclude<keyof ImageAdjust, 'toWhite'>; label: string }[] = [
   { key: 'brightness', label: '밝기' },
   { key: 'contrast', label: '대비' },
   { key: 'saturation', label: '채도' },
@@ -161,7 +161,14 @@ function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; it
           ))}
         </fieldset>
       )}
-      {ADJUSTS.map(({ key, label }) => (
+      <label className="radio">
+        <input
+          type="checkbox" checked={!!adjust.toWhite}
+          onChange={(e) => update(itemRef, el.id, { adjust: { ...adjust, toWhite: e.target.checked } })}
+        />
+        흰색으로 바꾸기 (어두운 사진 위에서)
+      </label>
+      {!adjust.toWhite && ADJUSTS.map(({ key, label }) => (
         <label key={key} className="field">
           <span>{label} ({adjust[key] > 0 ? '+' : ''}{adjust[key]})</span>
           <input
@@ -172,7 +179,10 @@ function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; it
         </label>
       ))}
       <div className="row">
-        <button className="btn" disabled={isNeutral(el.adjust)} onClick={() => update(itemRef, el.id, { adjust: undefined })}>
+        <button
+          className="btn" disabled={isNeutral({ ...adjust, toWhite: false })}
+          onClick={() => update(itemRef, el.id, { adjust: adjust.toWhite ? { ...NO_ADJUST, toWhite: true } : undefined })}
+        >
           색 처음대로
         </button>
         <button className="btn" disabled={!el.cleanup} onClick={onRedo}>배경 지우기 다시 하기</button>

@@ -18,7 +18,7 @@ export function adjustedImage(img: Drawable, adjust: ImageAdjust, maxSide: numbe
   const h0 = 'naturalHeight' in img ? img.naturalHeight : img.height;
   const k = Math.min(1, maxSide / Math.max(w0, h0));
   const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
-  const key = `${adjust.brightness}|${adjust.contrast}|${adjust.saturation}|${w}x${h}`;
+  const key = `${adjust.brightness}|${adjust.contrast}|${adjust.saturation}|${adjust.toWhite ? 'w' : ''}|${w}x${h}`;
   let variants = adjusted.get(img);
   const hit = variants?.get(key);
   if (hit) return hit;
