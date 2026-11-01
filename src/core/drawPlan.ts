@@ -2,7 +2,7 @@ import { isNeutral } from './adjust';
 import { backdropPath, BUBBLE_STROKE } from './backdrop';
 import type { ImageAdjust } from './adjust';
 import { BLEED_MM, itemCanvasMm } from './model';
-import type { PageItem, PageSize } from './model';
+import type { PageElement, PageItem, PageSize } from './model';
 import { DEFAULT_FRAME, framedCrop } from './geometry';
 import type { BgFrame, Rect } from './geometry';
 
@@ -55,22 +55,26 @@ export function planItem(
     ops.push({ op: 'fill', color: CREAM, rect: { x: creamX, y: 0, width: half, height: heightMm } });
   }
 
+  const pushBackdrop = (el: PageElement, rect: Rect) => {
+    if (!el.backdrop) return;
+    ops.push({
+      op: 'backdrop', path: backdropPath(el.backdrop, el.width, el.height), rect: { ...rect }, color: el.backdrop.color,
+      stroke: el.backdrop.shape === 'bubble' ? BUBBLE_STROKE : null, rotation: el.rotation,
+    });
+  };
+
   for (const el of item.elements) {
     const rect: Rect = { x: el.x + BLEED_MM, y: el.y + BLEED_MM, width: el.width, height: el.height };
     if (el.kind === 'image') {
       if (!dims[el.assetId]) continue;
-      if (el.backdrop) {
-        ops.push({
-          op: 'backdrop', path: backdropPath(el.backdrop, el.width, el.height), rect: { ...rect }, color: el.backdrop.color,
-          stroke: el.backdrop.shape === 'bubble' ? BUBBLE_STROKE : null, rotation: el.rotation,
-        });
-      }
+      pushBackdrop(el, rect);
       ops.push({
         op: 'image', assetId: el.assetId, src: null, dest: rect, rotation: el.rotation,
         ...(el.flipX ? { flipX: true as const } : {}),
         ...(isNeutral(el.adjust) ? {} : { adjust: el.adjust }),
       });
     } else {
+      pushBackdrop(el, rect);
       if (el.band) ops.push({ op: 'band', rect: { ...rect }, color: 'rgba(255,255,255,0.75)', radiusMm: 2, rotation: el.rotation });
       ops.push({
         op: 'text', text: el.text, rect, fontSizePt: el.fontSizePt, color: el.color, rotation: el.rotation, font: 'Gaegu',

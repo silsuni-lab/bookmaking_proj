@@ -257,3 +257,29 @@ test('a placed drawing can be rotated, flipped, colour-tweaked and re-cleaned', 
   expect((await book()).items[0].elements).toHaveLength(1);
   expect(errors).toEqual([]);
 });
+
+test('typed text can get a speech bubble, which replaces the white band', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '새 책 만들기' }).click();
+  const setup = page.getByRole('dialog', { name: '새 책 만들기' });
+  await setup.getByLabel('책 제목').fill('글자 말풍선');
+  await setup.getByLabel('아이 이름').fill('하준');
+  await setup.getByRole('button', { name: '만들기' }).click();
+  await page.getByRole('button', { name: '글자 넣기' }).click();
+  await expect(page.getByRole('heading', { name: '선택한 글자' })).toBeVisible();
+  await page.getByRole('checkbox', { name: '글자 뒤 흰 띠' }).check();
+
+  await page.getByRole('radio', { name: '말풍선' }).check();
+  await page.getByRole('button', { name: '뒤 배경 색 #D6ECFF' }).click();
+  const text = async () =>
+    (await readDb(page)).books[0]?.cover.front.elements.find((e: { text?: string }) => e.text === '여기에 글을 써 주세요');
+  await expect.poll(async () => {
+    const t = await text();
+    return t && { backdrop: t.backdrop, band: t.band };
+  }).toEqual({ backdrop: { shape: 'bubble', color: '#D6ECFF' }, band: false });
+  await expect(page.getByRole('checkbox', { name: '글자 뒤 흰 띠' })).toBeHidden();
+
+  await page.getByRole('radio', { name: '없음' }).check();
+  await expect.poll(async () => (await text())?.backdrop).toBeUndefined();
+  await expect(page.getByRole('checkbox', { name: '글자 뒤 흰 띠' })).toBeVisible();
+});
