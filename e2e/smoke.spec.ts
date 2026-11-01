@@ -233,5 +233,20 @@ test('a placed drawing can be rotated, flipped, colour-tweaked and re-cleaned', 
   await page.keyboard.press('ControlOrMeta+z');
   await expect.poll(async () => (await drawing())?.adjust?.contrast).toBe(0);
   expect((await drawing()).adjust.brightness).toBe(30);
+
+  // The drawing was saved to the collection; place it on a new page from there
+  const book = async () => (await readDb(page)).books[0];
+  expect((await book()).library).toHaveLength(1);
+  const libAsset = (await book()).library[0].assetId;
+  await page.getByRole('button', { name: '+ 쪽 추가' }).click();
+  await expect(page.getByRole('heading', { name: '1쪽', level: 2 })).toBeVisible();
+  await page.getByRole('button', { name: '모음의 그림 1 넣기' }).click();
+  await expect.poll(async () => (await book())?.items[0]?.elements.map((e: { assetId?: string }) => e.assetId)).toEqual([libAsset]);
+  expect((await book()).items[0].elements[0].cleanup?.sourceAssetId).toBeTruthy(); // can still redo the cleanup there
+
+  // Taking it out of the collection keeps it on the pages
+  await page.getByRole('button', { name: '모음에서 그림 1 빼기' }).click();
+  await expect.poll(async () => (await book()).library).toHaveLength(0);
+  expect((await book()).items[0].elements).toHaveLength(1);
   expect(errors).toEqual([]);
 });

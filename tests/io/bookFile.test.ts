@@ -37,6 +37,15 @@ describe('bookFile', () => {
     expect(got.strength).toBe(0.4);
   });
 
+  it('그림 모음의 asset 참조도 새 id로 바뀐다', async () => {
+    const { book, assets } = fixture();
+    book.library = [{ id: 'l1', assetId: 'c1', role: 'drawing' }];
+    book.items[0].elements = [];
+    const out = await importBookFile(await exportBookFile(book, assets));
+    const ids = new Set(out.assets.map((a) => a.id));
+    expect(ids.has(out.book.library![0].assetId)).toBe(true);
+  });
+
   it('가져오면 asset id가 새로 부여되고 참조가 모두 갱신된다', async () => {
     const { book, assets } = fixture();
     const out = await importBookFile(await exportBookFile(book, assets));

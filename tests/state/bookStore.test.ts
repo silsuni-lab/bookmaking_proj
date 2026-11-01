@@ -89,6 +89,20 @@ describe('edits and undo', () => {
     expect(s().book!.cover.front.bgFrame).toBeUndefined();
   });
 
+  it('a new drawing goes on the page and into the library as one undo step', () => {
+    const ref = { kind: 'cover', which: 'front' } as const;
+    const el = { id: 'd1', kind: 'image', assetId: 'cut', role: 'drawing', x: 0, y: 0, width: 5, height: 5, rotation: 0 } as const;
+    s().addElement(ref, el, { id: 'l1', assetId: 'cut', role: 'drawing' });
+    expect(s().book!.library!.map((l) => l.id)).toEqual(['l1']);
+    useBookStore.temporal.getState().undo();
+    expect(s().book!.library).toEqual([]);
+    expect(s().book!.cover.front.elements.some((e) => e.id === 'd1')).toBe(false);
+    useBookStore.temporal.getState().redo();
+    s().removeFromLibrary('l1');
+    expect(s().book!.library).toEqual([]);
+    expect(s().book!.cover.front.elements.some((e) => e.id === 'd1')).toBe(true); // the page keeps it
+  });
+
   it('updates are immutable and bump updatedAt', () => {
     const before = s().book!;
     vi.setSystemTime(before.updatedAt + 5000);

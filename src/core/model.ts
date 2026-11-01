@@ -72,6 +72,14 @@ export interface PageItem {
   elements: PageElement[];
 }
 
+/** A drawing or handwriting kept in the book's collection so it can be placed on more pages. */
+export interface LibraryItem {
+  id: string;
+  assetId: string;
+  role: 'drawing' | 'handwriting';
+  cleanup?: CleanupSource;
+}
+
 export interface Book {
   id: string;
   title: string;
@@ -79,6 +87,8 @@ export interface Book {
   sizeId: PageSizeId;
   cover: { front: PageItem; back: PageItem };
   items: PageItem[];
+  /** Newest first. Absent on books saved before the collection existed (see withLibrary). */
+  library?: LibraryItem[];
   updatedAt: number;
 }
 
@@ -101,9 +111,31 @@ export function newItem(layout: LayoutKind): PageItem {
   return { id: newId(), layout, backgroundAssetId: null, photoSide: 'left', elements: [] };
 }
 
-/** Ids of every asset the book uses (backgrounds and image elements of covers and pages). */
+/** Gives an older book a collection made of the drawings already on its pages (one per cutout). */
+export function withLibrary(book: Book): Book {
+  if (book.library) return book;
+  const seen = new Set<string>();
+  const library: LibraryItem[] = [];
+  for (const item of [book.cover.front, book.cover.back, ...book.items]) {
+    for (const e of item.elements) {
+      if (e.kind !== 'image' || seen.has(e.assetId)) continue;
+      seen.add(e.assetId);
+      library.push({ id: newId(), assetId: e.assetId, role: e.role, ...(e.cleanup ? { cleanup: e.cleanup } : {}) });
+    }
+  }
+  return { ...book, library };
+}
+
+/** Ids of every asset the book uses (backgrounds, image elements, and the drawing collection). */
 export function referencedAssetIds(book: Book): Set<string> {
   const ids = new Set<string>();
+  for (const l of book.library ?? []) {
+    ids.add(l.assetId);
+    if (l.cleanup) {
+      ids.add(l.cleanup.sourceAssetId);
+      if (l.cleanup.maskAssetId) ids.add(l.cleanup.maskAssetId);
+    }
+  }
   for (const item of [book.cover.front, book.cover.back, ...book.items]) {
     if (item.backgroundAssetId) ids.add(item.backgroundAssetId);
     for (const e of item.elements) {
@@ -161,6 +193,7 @@ export function newBook(sizeId: PageSizeId, title = '', childName = ''): Book {
     childName,
     sizeId,
     cover: { front, back: newItem('full') },
+    library: [],
     items: [],
     updatedAt: Date.now(),
   };

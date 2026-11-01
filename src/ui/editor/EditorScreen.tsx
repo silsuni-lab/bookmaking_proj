@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useBookStore } from '../../state/bookStore';
 import CleanupDialog from '../cleanup/CleanupDialog';
 import { newImageElement } from '../../core/editorLayout';
-import { PAGE_SIZES } from '../../core/model';
+import { newId, PAGE_SIZES } from '../../core/model';
 import type { ImageElement, ItemRef, PageItem } from '../../core/model';
 import Inspector from './Inspector';
 import PageList from './PageList';
@@ -50,7 +50,7 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
         selectedEl={selectedEl} onSelectEl={setSelectedEl}
       />
       <Inspector
-        book={book} itemRef={ref} item={item} dims={assets.dims}
+        book={book} itemRef={ref} item={item} dims={assets.dims} images={assets.images}
         selectedEl={selectedEl} onSelectEl={setSelectedEl}
         onAsset={assets.add} onOpenCleanup={(role, elId) => setCleanup({ role, elId })}
       />
@@ -72,7 +72,7 @@ export default function EditorScreen({ bookId }: { bookId: string }) {
               });
             } else {
               const el = newImageElement(item, PAGE_SIZES[book.sizeId], cutout.id, cleanup.role, cutout.widthPx / cutout.heightPx);
-              st.addElement(ref, { ...el, cleanup: source });
+              st.addElement(ref, { ...el, cleanup: source }, { id: newId(), assetId: cutout.id, role: cleanup.role, cleanup: source });
               setSelectedEl(el.id);
             }
             setCleanup(null);

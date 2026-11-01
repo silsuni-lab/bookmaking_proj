@@ -120,3 +120,10 @@ h2 { font-size: 30px; }
 .export-links { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 .export-links a { text-decoration: none; }
 .thumb.on.misaligned { border-color: var(--danger); box-shadow: 0 0 0 3px var(--accent); background: #ffe9d6; }
+
+.library { list-style: none; padding: 0; margin: 8px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.library li { position: relative; }
+.library-add { width: 100%; aspect-ratio: 1; border: 2px solid var(--line); border-radius: 10px; padding: 4px; cursor: pointer; display: grid; place-items: center; }
+.library-add:hover { border-color: var(--accent); }
+.library-add img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.library-remove { position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); background: #fff; cursor: pointer; line-height: 18px; padding: 0; }

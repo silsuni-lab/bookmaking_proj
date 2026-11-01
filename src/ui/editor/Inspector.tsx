@@ -2,13 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { checkBook, issueText } from '../../core/validate';
 import type { AssetDims } from '../../core/drawPlan';
 import { DEFAULT_FRAME, MAX_BG_ZOOM } from '../../core/geometry';
-import { clampPt, newTextElement, pageLabelOf, rotateAboutCenter } from '../../core/editorLayout';
+import { clampPt, newImageElement, newTextElement, pageLabelOf, rotateAboutCenter } from '../../core/editorLayout';
 import { isNeutral, NO_ADJUST } from '../../core/adjust';
 import type { ImageAdjust } from '../../core/adjust';
 import { BACKDROP_COLORS } from '../../core/backdrop';
 import type { Backdrop } from '../../core/backdrop';
 import { newId, PAGE_SIZES } from '../../core/model';
-import type { Book, ImageElement, ItemRef, LayoutKind, PageItem, TextElement } from '../../core/model';
+import type { Book, ImageElement, ItemRef, LayoutKind, LibraryItem, PageItem, TextElement } from '../../core/model';
 import { bitmapToJpegBlob, ImageLoadError, loadBitmap, loadErrorMessage } from '../../io/imageLoader';
 import { putAsset } from '../../io/storage';
 import type { StoredAsset } from '../../io/storage';
@@ -20,6 +20,7 @@ interface Props {
   itemRef: ItemRef;
   item: PageItem;
   dims: AssetDims;
+  images: Map<string, HTMLImageElement>;
   selectedEl: string | null;
   onSelectEl(id: string | null): void;
   onAsset(asset: StoredAsset): void;
@@ -182,7 +183,7 @@ function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; it
   );
 }
 
-export default function Inspector({ book, itemRef, item, dims, selectedEl, onSelectEl, onAsset, onOpenCleanup }: Props) {
+export default function Inspector({ book, itemRef, item, dims, images, selectedEl, onSelectEl, onAsset, onOpenCleanup }: Props) {
   const store = useBookStore.getState;
   const file = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -220,6 +221,14 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
     } finally {
       setBusy(false);
     }
+  };
+
+  const placeFromLibrary = (l: LibraryItem) => {
+    const d = dims[l.assetId];
+    if (!d) return;
+    const el = newImageElement(item, size, l.assetId, l.role, d.widthPx / d.heightPx);
+    store().addElement(itemRef, l.cleanup ? { ...el, cleanup: l.cleanup } : el);
+    onSelectEl(el.id);
   };
 
   const addText = () => {
@@ -298,6 +307,31 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
           onRemove={() => { store().removeElement(itemRef, sel.id); onSelectEl(null); }}
         />
       )}
+      <section className="inspector-group">
+        <h3>내 그림 모음</h3>
+        {(book.library ?? []).length === 0 ? (
+          <p className="hint">그림이나 손글씨를 넣으면 여기에 모여요. 눌러서 다른 쪽에도 넣을 수 있어요.</p>
+        ) : (
+          <>
+            <p className="hint">누르면 이 쪽에 넣어요.</p>
+            <ul className="library">
+              {book.library!.map((l, n) => {
+                const noun = l.role === 'drawing' ? '그림' : '손글씨';
+                const img = images.get(l.assetId);
+                return (
+                  <li key={l.id}>
+                    <button className="library-add checker" aria-label={`모음의 ${noun} ${n + 1} 넣기`} onClick={() => placeFromLibrary(l)}>
+                      {img ? <img src={img.src} alt="" /> : <span>…</span>}
+                    </button>
+                    <button className="library-remove" aria-label={`모음에서 ${noun} ${n + 1} 빼기`} title="모음에서 빼기"
+                      onClick={() => store().removeFromLibrary(l.id)}>×</button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+      </section>
       {issues.length > 0 && (
         <section className="inspector-group">
           <h3>확인해 주세요</h3>
