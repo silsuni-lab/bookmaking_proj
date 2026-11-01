@@ -7,11 +7,20 @@ import { fitScale } from '../../core/editorLayout';
 import { clampFrame, DEFAULT_FRAME, panFrame } from '../../core/geometry';
 import type { BgFrame } from '../../core/geometry';
 import { BLEED_MM, PAGE_SIZES } from '../../core/model';
-import type { ItemRef, PageElement, PageItem } from '../../core/model';
+import type { ImageElement, ItemRef, PageElement, PageItem } from '../../core/model';
+import { isNeutral } from '../../core/adjust';
+import { adjustedImage } from '../../io/renderCanvas';
 import { useBookStore } from '../../state/bookStore';
 import ElementNode from './ElementNode';
 
 const SAFE_MM = 5;
+const EDITOR_ADJUST_PX = 1600;
+
+/** The drawing as shown in the editor: colour-adjusted (at screen resolution) when tweaks are set. */
+function drawingImage(img: HTMLImageElement | undefined, el: ImageElement): CanvasImageSource | undefined {
+  if (!img || isNeutral(el.adjust)) return img;
+  return adjustedImage(img, el.adjust!, EDITOR_ADJUST_PX);
+}
 const PAD = 24;
 
 interface Props {
@@ -154,7 +163,7 @@ export default function PageEditor({ itemRef, item, sizeId, dims, images, select
               <ElementNode
                 key={el.id}
                 el={el}
-                image={el.kind === 'image' ? images.get(el.assetId) : undefined}
+                image={el.kind === 'image' ? drawingImage(images.get(el.assetId), el) : undefined}
                 register={register}
                 onSelect={onSelectEl}
                 onCommit={commit}

@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { checkBook, issueText } from '../../core/validate';
 import type { AssetDims } from '../../core/drawPlan';
 import { DEFAULT_FRAME, MAX_BG_ZOOM } from '../../core/geometry';
-import { clampPt, newTextElement, pageLabelOf } from '../../core/editorLayout';
+import { clampPt, newTextElement, pageLabelOf, rotateAboutCenter } from '../../core/editorLayout';
+import { isNeutral, NO_ADJUST } from '../../core/adjust';
+import type { ImageAdjust } from '../../core/adjust';
 import { newId, PAGE_SIZES } from '../../core/model';
-import type { Book, ItemRef, LayoutKind, PageItem, TextElement } from '../../core/model';
+import type { Book, ImageElement, ItemRef, LayoutKind, PageItem, TextElement } from '../../core/model';
 import { bitmapToJpegBlob, ImageLoadError, loadBitmap, loadErrorMessage } from '../../io/imageLoader';
 import { putAsset } from '../../io/storage';
 import type { StoredAsset } from '../../io/storage';
 import { useBookStore } from '../../state/bookStore';
+import { beginGesture, gestureEdit } from './gestureEdit';
 
 interface Props {
   book: Book;
@@ -18,7 +21,8 @@ interface Props {
   selectedEl: string | null;
   onSelectEl(id: string | null): void;
   onAsset(asset: StoredAsset): void;
-  onOpenCleanup(role: 'drawing' | 'handwriting'): void;
+  /** Opens the cleanup dialog; with elId, redoes the paper removal of that drawing. */
+  onOpenCleanup(role: 'drawing' | 'handwriting', elId?: string): void;
 }
 
 const LAYOUTS: { id: LayoutKind; label: string }[] = [
@@ -90,6 +94,48 @@ function TextEditor({ el, itemRef }: { el: TextElement; itemRef: ItemRef }) {
         글자 뒤 흰 띠
       </label>
       <button className="btn danger" onClick={() => remove(itemRef, el.id)}>이 글자 지우기</button>
+    </section>
+  );
+}
+
+const ADJUSTS: { key: keyof ImageAdjust; label: string }[] = [
+  { key: 'brightness', label: '밝기' },
+  { key: 'contrast', label: '대비' },
+  { key: 'saturation', label: '채도' },
+];
+
+function DrawingEditor({ el, itemRef, onRedo, onRemove }: { el: ImageElement; itemRef: ItemRef; onRedo(): void; onRemove(): void }) {
+  const update = useBookStore((s) => s.updateElement);
+  const adjust = el.adjust ?? NO_ADJUST;
+  const noun = el.role === 'drawing' ? '그림' : '손글씨';
+  return (
+    <section className="inspector-group">
+      <h3>선택한 {noun}</h3>
+      <div className="row">
+        <button className="btn" onClick={() => update(itemRef, el.id, rotateAboutCenter(el, -90))}>↺ 왼쪽으로</button>
+        <button className="btn" onClick={() => update(itemRef, el.id, rotateAboutCenter(el, 90))}>↻ 오른쪽으로</button>
+        <button className={`btn${el.flipX ? ' primary' : ''}`} aria-pressed={!!el.flipX} onClick={() => update(itemRef, el.id, { flipX: !el.flipX })}>
+          좌우 뒤집기
+        </button>
+      </div>
+      {ADJUSTS.map(({ key, label }) => (
+        <label key={key} className="field">
+          <span>{label} ({adjust[key] > 0 ? '+' : ''}{adjust[key]})</span>
+          <input
+            type="range" min={-100} max={100} step={5} value={adjust[key]}
+            onPointerDown={beginGesture}
+            onChange={(e) => gestureEdit(() => update(itemRef, el.id, { adjust: { ...adjust, [key]: Number(e.target.value) } }))}
+          />
+        </label>
+      ))}
+      <div className="row">
+        <button className="btn" disabled={isNeutral(el.adjust)} onClick={() => update(itemRef, el.id, { adjust: undefined })}>
+          색 처음대로
+        </button>
+        <button className="btn" disabled={!el.cleanup} onClick={onRedo}>배경 지우기 다시 하기</button>
+      </div>
+      {!el.cleanup && <p className="hint">이 기능이 생기기 전에 넣은 {noun}이라 다시 하려면 새로 넣어 주세요.</p>}
+      <button className="btn danger" onClick={onRemove}>이 {noun} 지우기</button>
     </section>
   );
 }
@@ -189,7 +235,8 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
             <span>확대</span>
             <input
               type="range" min={1} max={MAX_BG_ZOOM} step={0.1} value={(item.bgFrame ?? DEFAULT_FRAME).zoom}
-              onChange={(e) => store().setBgFrame(itemRef, { ...(item.bgFrame ?? DEFAULT_FRAME), zoom: Number(e.target.value) })}
+              onPointerDown={beginGesture}
+              onChange={(e) => gestureEdit(() => store().setBgFrame(itemRef, { ...(item.bgFrame ?? DEFAULT_FRAME), zoom: Number(e.target.value) }))}
             />
           </label>
           <button className="btn" disabled={!item.bgFrame} onClick={() => store().setBgFrame(itemRef, undefined)}>
@@ -201,12 +248,11 @@ export default function Inspector({ book, itemRef, item, dims, selectedEl, onSel
       {error && <p className="error" role="alert">{error}</p>}
       {sel?.kind === 'text' && <TextEditor key={sel.id} el={sel} itemRef={itemRef} />}
       {sel?.kind === 'image' && (
-        <section className="inspector-group">
-          <h3>선택한 그림</h3>
-          <button className="btn danger" onClick={() => { store().removeElement(itemRef, sel.id); onSelectEl(null); }}>
-            이 그림 지우기
-          </button>
-        </section>
+        <DrawingEditor
+          key={sel.id} el={sel} itemRef={itemRef}
+          onRedo={() => onOpenCleanup(sel.role, sel.id)}
+          onRemove={() => { store().removeElement(itemRef, sel.id); onSelectEl(null); }}
+        />
       )}
       {issues.length > 0 && (
         <section className="inspector-group">

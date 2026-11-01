@@ -56,6 +56,20 @@ describe('planItem', () => {
     });
   });
 
+  it('image element carries flip and colour tweaks only when set', () => {
+    const item = newItem('full');
+    item.elements.push(
+      { id: 'a', kind: 'image', assetId: 'x', role: 'drawing', x: 0, y: 0, width: 10, height: 10, rotation: 0, flipX: true,
+        adjust: { brightness: 10, contrast: 0, saturation: 0 } },
+      { id: 'b', kind: 'image', assetId: 'x', role: 'drawing', x: 0, y: 0, width: 10, height: 10, rotation: 0, flipX: false,
+        adjust: { brightness: 0, contrast: 0, saturation: 0 } },
+    );
+    const { ops } = planItem(item, PAGE_SIZES.sq200, { x: { widthPx: 10, heightPx: 10 } });
+    expect(ops[1]).toMatchObject({ flipX: true, adjust: { brightness: 10, contrast: 0, saturation: 0 } });
+    expect(ops[2]).not.toHaveProperty('flipX');
+    expect(ops[2]).not.toHaveProperty('adjust');
+  });
+
   it('spread photoSide left: photo covers outer bleed + left page, cream the rest', () => {
     const item = newItem('spread');
     item.backgroundAssetId = 'p';

@@ -21,6 +21,14 @@ describe('model', () => {
 });
 
 describe('referencedAssetIds', () => {
+  test('keeps the original photo and touch-up mask of a drawing', () => {
+    const book = newBook('sq200', 't', 'c');
+    book.cover.front.elements.push({
+      id: 'e', kind: 'image', assetId: 'cut', role: 'drawing', x: 0, y: 0, width: 1, height: 1, rotation: 0,
+      cleanup: { sourceAssetId: 'src', quad: null, strength: 0.5, maskAssetId: 'm' },
+    });
+    expect([...referencedAssetIds(book)].sort()).toEqual(['cut', 'm', 'src']);
+  });
   test('collects background and image-element asset ids from covers and items', () => {
     const book = newBook('sq200', 't', 'c');
     book.cover.front.backgroundAssetId = 'f';

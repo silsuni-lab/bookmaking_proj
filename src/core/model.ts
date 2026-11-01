@@ -1,4 +1,6 @@
+import type { ImageAdjust } from './adjust';
 import type { BgFrame } from './geometry';
+import type { Quad } from './perspective';
 
 
 export const BLEED_MM = 3;
@@ -31,10 +33,22 @@ interface ElementBase {
   height: number;
   rotation: number;
 }
+/** What a cutout was made from, so the paper removal can be redone later. Absent on drawings added before this existed. */
+export interface CleanupSource {
+  sourceAssetId: string;
+  /** Paper corners in source pixels; null = corners step skipped. */
+  quad: Quad | null;
+  strength: number;
+  /** Touch-up brush mask (grey PNG); null = no brush strokes. */
+  maskAssetId: string | null;
+}
 export interface ImageElement extends ElementBase {
   kind: 'image';
   assetId: string;
   role: 'drawing' | 'handwriting';
+  flipX?: boolean;
+  adjust?: ImageAdjust;
+  cleanup?: CleanupSource;
 }
 export interface TextElement extends ElementBase {
   kind: 'text';
@@ -71,7 +85,8 @@ export interface Asset {
   blob: Blob;
   widthPx: number;
   heightPx: number;
-  kind: 'photo' | 'cutout';
+  /** source = original photo of a drawing (JPEG); mask = touch-up mask (PNG). Neither is drawn directly. */
+  kind: 'photo' | 'cutout' | 'source' | 'mask';
 }
 
 export type ItemRef = { kind: 'cover'; which: 'front' | 'back' } | { kind: 'item'; id: string };
@@ -89,7 +104,14 @@ export function referencedAssetIds(book: Book): Set<string> {
   const ids = new Set<string>();
   for (const item of [book.cover.front, book.cover.back, ...book.items]) {
     if (item.backgroundAssetId) ids.add(item.backgroundAssetId);
-    for (const e of item.elements) if (e.kind === 'image') ids.add(e.assetId);
+    for (const e of item.elements) {
+      if (e.kind !== 'image') continue;
+      ids.add(e.assetId);
+      if (e.cleanup) {
+        ids.add(e.cleanup.sourceAssetId);
+        if (e.cleanup.maskAssetId) ids.add(e.cleanup.maskAssetId);
+      }
+    }
   }
   return ids;
 }

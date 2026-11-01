@@ -5,7 +5,7 @@ import type { PageElement } from '../../core/model';
 
 interface Props {
   el: PageElement;
-  image: HTMLImageElement | undefined;
+  image: CanvasImageSource | undefined;
   register(id: string, node: Konva.Group | null): void;
   onSelect(id: string): void;
   /** Called once per finished drag/resize/rotate gesture, with mm values. */
@@ -39,7 +39,9 @@ export default function ElementNode({ el, image, register, onSelect, onCommit }:
       }}
     >
       <Rect width={el.width} height={el.height} fill="rgba(0,0,0,0.001)" />
-      {el.kind === 'image' && image && <KImage image={image} width={el.width} height={el.height} />}
+      {el.kind === 'image' && image && (
+        <KImage image={image} width={el.width} height={el.height} x={el.flipX ? el.width : 0} scaleX={el.flipX ? -1 : 1} />
+      )}
       {el.kind === 'text' && el.band && (
         <Rect width={el.width} height={el.height} fill="rgba(255,255,255,0.75)" cornerRadius={2} />
       )}

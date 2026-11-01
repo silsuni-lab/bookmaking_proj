@@ -2,6 +2,8 @@ import JSZip from 'jszip';
 import { newId, referencedAssetIds, type Book, type PageItem } from '../core/model';
 import type { StoredAsset } from './storage';
 
+const isPng = (kind: StoredAsset['kind']) => kind === 'cutout' || kind === 'mask';
+
 export class BookFileError extends Error {
   constructor() {
     super('책 파일이 아니거나 손상되었어요.');
@@ -22,7 +24,7 @@ export async function exportBookFile(book: Book, assets: StoredAsset[]): Promise
   zip.file('book.json', JSON.stringify(book));
   const used = referencedAssetIds(book);
   const manifestAssets: ManifestAsset[] = assets.filter((a) => used.has(a.id)).map((a) => {
-    const file = `assets/${a.id}.${a.kind === 'cutout' ? 'png' : 'jpg'}`;
+    const file = `assets/${a.id}.${isPng(a.kind) ? 'png' : 'jpg'}`;
     zip.file(file, a.blob);
     return { id: a.id, kind: a.kind, widthPx: a.widthPx, heightPx: a.heightPx, file };
   });
@@ -46,14 +48,23 @@ export async function importBookFile(file: Blob): Promise<{ book: Book; assets: 
     const remap = (item: PageItem): PageItem => ({
       ...item,
       backgroundAssetId: item.backgroundAssetId ? (idMap.get(item.backgroundAssetId) ?? item.backgroundAssetId) : null,
-      elements: item.elements.map((el) => (el.kind === 'image' ? { ...el, assetId: idMap.get(el.assetId) ?? el.assetId } : el)),
+      elements: item.elements.map((el) => {
+        if (el.kind !== 'image') return el;
+        const id = (old: string) => idMap.get(old) ?? old;
+        const cleanup = el.cleanup && {
+          ...el.cleanup,
+          sourceAssetId: id(el.cleanup.sourceAssetId),
+          maskAssetId: el.cleanup.maskAssetId && id(el.cleanup.maskAssetId),
+        };
+        return { ...el, assetId: id(el.assetId), ...(cleanup ? { cleanup } : {}) };
+      }),
     });
     book.cover = { front: remap(book.cover.front), back: remap(book.cover.back) };
     book.items = book.items.map(remap);
     for (const m of manifest.assets) {
       const entry = zip.file(m.file);
       if (!entry) throw new BookFileError();
-      const type = m.kind === 'cutout' ? 'image/png' : 'image/jpeg';
+      const type = isPng(m.kind) ? 'image/png' : 'image/jpeg';
       const blob = new Blob([await entry.async('arraybuffer')], { type });
       assets.push({ id: idMap.get(m.id)!, kind: m.kind, widthPx: m.widthPx, heightPx: m.heightPx, blob, bookId: book.id });
     }

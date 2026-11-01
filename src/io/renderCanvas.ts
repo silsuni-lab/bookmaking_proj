@@ -1,7 +1,39 @@
+import { adjustPixels } from '../core/adjust';
+import type { ImageAdjust } from '../core/adjust';
 import type { planItem } from '../core/drawPlan';
 import type { Rect } from '../core/geometry';
 
 const LINE_HEIGHT = 1.3;
+
+type Drawable = HTMLImageElement | ImageBitmap | OffscreenCanvas | HTMLCanvasElement;
+
+const adjusted = new WeakMap<object, Map<string, OffscreenCanvas>>();
+
+/**
+ * Colour-adjusted copy of a drawing, at most maxSide px on its long side (never upscaled).
+ * Keeps the two most recent variants per image so slider moves and redraws reuse them.
+ */
+export function adjustedImage(img: Drawable, adjust: ImageAdjust, maxSide: number): OffscreenCanvas {
+  const w0 = 'naturalWidth' in img ? img.naturalWidth : img.width;
+  const h0 = 'naturalHeight' in img ? img.naturalHeight : img.height;
+  const k = Math.min(1, maxSide / Math.max(w0, h0));
+  const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+  const key = `${adjust.brightness}|${adjust.contrast}|${adjust.saturation}|${w}x${h}`;
+  let variants = adjusted.get(img);
+  const hit = variants?.get(key);
+  if (hit) return hit;
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D context unavailable');
+  ctx.drawImage(img, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h);
+  adjustPixels(data.data, adjust);
+  ctx.putImageData(data, 0, 0);
+  if (!variants) adjusted.set(img, (variants = new Map()));
+  variants.set(key, canvas);
+  if (variants.size > 2) variants.delete(variants.keys().next().value!);
+  return canvas;
+}
 
 function rotateAboutTopLeft(ctx: OffscreenCanvasRenderingContext2D, rect: Rect, rotation: number): void {
   ctx.translate(rect.x, rect.y);
@@ -54,7 +86,7 @@ function wrapLines(ctx: OffscreenCanvasRenderingContext2D, text: string, maxWidt
 
 export async function renderOps(
   plan: ReturnType<typeof planItem>,
-  bitmaps: ReadonlyMap<string, CanvasImageSource>,
+  bitmaps: ReadonlyMap<string, Drawable>,
   pxPerMm: number,
 ): Promise<OffscreenCanvas> {
   const canvas = new OffscreenCanvas(Math.round(plan.widthMm * pxPerMm), Math.round(plan.heightMm * pxPerMm));
@@ -78,7 +110,13 @@ export async function renderOps(
             const s = op.src;
             ctx.drawImage(bmp, s.x, s.y, s.width, s.height, d.x, d.y, d.width, d.height);
           } else {
-            ctx.drawImage(bmp, d.x, d.y, d.width, d.height);
+            const img = op.adjust ? adjustedImage(bmp, op.adjust, Math.ceil(Math.max(d.width, d.height) * pxPerMm)) : bmp;
+            if (op.flipX) {
+              // mirror inside the element box, like the editor's flipped Konva image
+              ctx.translate(2 * d.x + d.width, 0);
+              ctx.scale(-1, 1);
+            }
+            ctx.drawImage(img, d.x, d.y, d.width, d.height);
           }
         }
         break;

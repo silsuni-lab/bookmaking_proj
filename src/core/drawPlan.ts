@@ -1,3 +1,5 @@
+import { isNeutral } from './adjust';
+import type { ImageAdjust } from './adjust';
 import { BLEED_MM, itemCanvasMm } from './model';
 import type { PageItem, PageSize } from './model';
 import { DEFAULT_FRAME, framedCrop } from './geometry';
@@ -6,7 +8,8 @@ import type { BgFrame, Rect } from './geometry';
 // Units: mm. Origin = top-left of the bleed-inclusive canvas.
 export type DrawOp =
   | { op: 'fill'; color: string; rect: Rect }
-  | { op: 'image'; assetId: string; src: Rect | null; dest: Rect; rotation: number } // src null = whole image
+  // src null = whole image; flipX mirrors inside dest; adjust = colour tweaks (both only on drawings)
+  | { op: 'image'; assetId: string; src: Rect | null; dest: Rect; rotation: number; flipX?: true; adjust?: ImageAdjust }
   | { op: 'band'; rect: Rect; color: 'rgba(255,255,255,0.75)'; radiusMm: 2; rotation: number }
   | { op: 'text'; text: string; rect: Rect; fontSizePt: number; color: string; rotation: number; font: 'Gaegu' };
 
@@ -53,7 +56,11 @@ export function planItem(
     const rect: Rect = { x: el.x + BLEED_MM, y: el.y + BLEED_MM, width: el.width, height: el.height };
     if (el.kind === 'image') {
       if (!dims[el.assetId]) continue;
-      ops.push({ op: 'image', assetId: el.assetId, src: null, dest: rect, rotation: el.rotation });
+      ops.push({
+        op: 'image', assetId: el.assetId, src: null, dest: rect, rotation: el.rotation,
+        ...(el.flipX ? { flipX: true as const } : {}),
+        ...(isNeutral(el.adjust) ? {} : { adjust: el.adjust }),
+      });
     } else {
       if (el.band) ops.push({ op: 'band', rect: { ...rect }, color: 'rgba(255,255,255,0.75)', radiusMm: 2, rotation: el.rotation });
       ops.push({

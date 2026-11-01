@@ -1,15 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { decodeMask, encodeMask } from '../../core/adjust';
 import { applyMask, MASK_ERASE, MASK_RESTORE, newMask, paintMask } from '../../core/mask';
 import { newId } from '../../core/model';
+import type { CleanupSource } from '../../core/model';
 import type { PaperResult, RawImage } from '../../core/paper';
 import type { Pt, Quad } from '../../core/perspective';
-import { bitmapToRaw, ImageLoadError, loadBitmap, loadErrorMessage, rawToPngBlob } from '../../io/imageLoader';
-import { putAsset, type StoredAsset } from '../../io/storage';
+import { bitmapToRaw, blobToRaw, ImageLoadError, loadBitmap, loadErrorMessage, rawToJpegBlob, rawToPngBlob } from '../../io/imageLoader';
+import { getAsset, putAsset, type StoredAsset } from '../../io/storage';
+
+export interface CleanupOutput {
+  cutout: StoredAsset;
+  /** Original photo / mask assets newly stored by this run. */
+  saved: StoredAsset[];
+  cleanup: CleanupSource;
+}
 
 interface Props {
   bookId: string;
   role: 'drawing' | 'handwriting';
-  onDone(asset: StoredAsset): void;
+  /** Start from a drawing's saved original and settings instead of picking a photo. */
+  redo?: CleanupSource;
+  onDone(out: CleanupOutput): void;
   onCancel(): void;
 }
 
@@ -30,7 +41,17 @@ function copyRaw(r: RawImage): RawImage {
   return { width: r.width, height: r.height, data: new Uint8ClampedArray(r.data) };
 }
 
-export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props) {
+function defaultQuad(raw: RawImage): Quad {
+  const inset = 0.08;
+  return [
+    { x: raw.width * inset, y: raw.height * inset },
+    { x: raw.width * (1 - inset), y: raw.height * inset },
+    { x: raw.width * (1 - inset), y: raw.height * (1 - inset) },
+    { x: raw.width * inset, y: raw.height * (1 - inset) },
+  ];
+}
+
+export default function CleanupDialog({ bookId, role, redo, onDone, onCancel }: Props) {
   const [stage, setStage] = useState<Stage>('pick');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,6 +69,10 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
   const maskRef = useRef<Uint8Array | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const reqId = useRef(0);
+  // Original photo already stored (redo), the corners actually used, and a saved mask waiting for its result.
+  const sourceIdRef = useRef<string | null>(null);
+  const usedQuad = useRef<Quad | null>(null);
+  const pendingMask = useRef<Uint8Array | null>(null);
 
   const srcCanvas = useRef<HTMLCanvasElement>(null);
   const origCanvas = useRef<HTMLCanvasElement>(null);
@@ -62,7 +87,7 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
 
   useEffect(() => {
     mounted.current = true;
-    fileInput.current?.click();
+    if (!redo) fileInput.current?.click();
     const waiting = pending.current;
     return () => {
       mounted.current = false;
@@ -106,13 +131,9 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       bmp.close();
       if (!mounted.current) return;
       srcRef.current = raw;
-      const inset = 0.08;
-      setQuad([
-        { x: raw.width * inset, y: raw.height * inset },
-        { x: raw.width * (1 - inset), y: raw.height * inset },
-        { x: raw.width * (1 - inset), y: raw.height * (1 - inset) },
-        { x: raw.width * inset, y: raw.height * (1 - inset) },
-      ]);
+      sourceIdRef.current = null;
+      pendingMask.current = null;
+      setQuad(defaultQuad(raw));
       setNotice(null);
       setStage('corners');
     } catch (e) {
@@ -138,7 +159,9 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       if ('error' in r) throw new Error(r.error);
       if (!('image' in r)) throw new Error('unexpected reply');
       resultRef.current = r;
-      maskRef.current = newMask(r.image.width, r.image.height);
+      const saved = pendingMask.current;
+      pendingMask.current = null;
+      maskRef.current = saved && saved.length === r.image.width * r.image.height ? saved : newMask(r.image.width, r.image.height);
       drawRaw(resultCanvas.current, r.image);
       return true;
     } catch (e) {
@@ -151,16 +174,16 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
     }
   }, [call]);
 
-  const goPaper = async (useQuad: boolean) => {
+  const goPaper = async (useQuad: boolean, q: Quad | null = quad, s: number = strength) => {
     const src = srcRef.current;
-    if (!src || !quad || busy) return;
+    if (!src || !q || busy) return;
     setNotice(null);
     let warped = src;
     if (useQuad) {
       const id = ++reqId.current;
       setBusy(true);
       try {
-        const r = await call({ type: 'warp', img: copyRaw(src), quad });
+        const r = await call({ type: 'warp', img: copyRaw(src), quad: q });
         if (!mounted.current || id !== reqId.current) return;
         if ('error' in r) {
           setNotice(r.error === 'degenerate quad' ? '모서리 위치를 다시 맞춰 주세요.' : '그림을 정리하지 못했어요. 다시 시도해 주세요.');
@@ -178,14 +201,44 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
       }
     }
     warpedRef.current = warped;
+    usedQuad.current = useQuad ? q : null;
     resultRef.current = null;
     maskRef.current = null;
     setStage('paper');
     // canvases mount after the stage change; wait one frame
     await new Promise((res) => { rafHandle.current = requestAnimationFrame(res); });
     if (!mounted.current) return;
-    await runPaper(warped, strength);
+    await runPaper(warped, s);
   };
+
+  // Redo: load the saved original, corners, strength and brush mask, then open at the paper step.
+  useEffect(() => {
+    if (!redo) return;
+    void (async () => {
+      setBusy(true);
+      try {
+        const a = await getAsset(redo.sourceAssetId);
+        if (!a) throw new Error('missing source');
+        const raw = await blobToRaw(a.blob);
+        const m = redo.maskAssetId ? await getAsset(redo.maskAssetId) : undefined;
+        const mask = m ? decodeMask((await blobToRaw(m.blob)).data) : null;
+        if (!mounted.current) return;
+        srcRef.current = raw;
+        sourceIdRef.current = redo.sourceAssetId;
+        pendingMask.current = mask;
+        const q = redo.quad ?? defaultQuad(raw);
+        setQuad(q);
+        setStrength(redo.strength);
+        setBusy(false);
+        await goPaper(redo.quad !== null, q, redo.strength);
+      } catch (e) {
+        console.error(e);
+        if (!mounted.current) return;
+        setBusy(false);
+        setLoadError('원본 사진을 불러오지 못했어요. 새 사진을 골라 주세요.');
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Redraw step 2 panes whenever it is (re)entered, without recomputing.
   useEffect(() => {
@@ -284,9 +337,26 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
     try {
       const final = applyMask(r, mask);
       const blob = await rawToPngBlob(final);
-      const asset: StoredAsset = { id: newId(), bookId, blob, widthPx: final.width, heightPx: final.height, kind: 'cutout' };
-      await putAsset(asset);
-      if (mounted.current) onDone(asset);
+      const cutout: StoredAsset = { id: newId(), bookId, blob, widthPx: final.width, heightPx: final.height, kind: 'cutout' };
+      await putAsset(cutout);
+      const saved: StoredAsset[] = [];
+      let sourceAssetId = sourceIdRef.current;
+      if (!sourceAssetId) {
+        const src = srcRef.current!;
+        const a: StoredAsset = { id: newId(), bookId, blob: await rawToJpegBlob(src), widthPx: src.width, heightPx: src.height, kind: 'source' };
+        await putAsset(a);
+        saved.push(a);
+        sourceAssetId = sourceIdRef.current = a.id;
+      }
+      let maskAssetId: string | null = null;
+      if (mask.some((v) => v !== 0)) {
+        const png = await rawToPngBlob({ width: r.image.width, height: r.image.height, data: encodeMask(mask) });
+        const m: StoredAsset = { id: newId(), bookId, blob: png, widthPx: r.image.width, heightPx: r.image.height, kind: 'mask' };
+        await putAsset(m);
+        saved.push(m);
+        maskAssetId = m.id;
+      }
+      if (mounted.current) onDone({ cutout, saved, cleanup: { sourceAssetId, quad: usedQuad.current, strength, maskAssetId } });
     } catch (e) {
       if (!mounted.current) return;
       console.error(e);
@@ -295,7 +365,8 @@ export default function CleanupDialog({ bookId, role, onDone, onCancel }: Props)
     }
   };
 
-  const title = role === 'drawing' ? '그림 넣기' : '손글씨 넣기';
+  const noun = role === 'drawing' ? '그림' : '손글씨';
+  const title = redo ? `${noun} 배경 다시 지우기` : `${noun} 넣기`;
   const current = STAGE_INDEX[stage];
   const aspect = srcRef.current ? srcRef.current.width / srcRef.current.height : 1;
 

@@ -5,9 +5,9 @@ import { BookFileError, exportBookFile, importBookFile } from '../../src/io/book
 import { assetsOf, closeDb, putAsset, saveBook, type StoredAsset } from '../../src/io/storage';
 import 'fake-indexeddb/auto';
 
-const mk = (id: string, bookId: string, kind: 'photo' | 'cutout', size: number): StoredAsset => ({
+const mk = (id: string, bookId: string, kind: 'photo' | 'cutout' | 'source', size: number): StoredAsset => ({
   id, bookId, kind, widthPx: 3, heightPx: 5,
-  blob: new Blob([new Uint8Array(size).fill(7)], { type: kind === 'photo' ? 'image/jpeg' : 'image/png' }),
+  blob: new Blob([new Uint8Array(size).fill(7)], { type: kind === 'cutout' ? 'image/png' : 'image/jpeg' }),
 });
 
 function fixture() {
@@ -23,6 +23,20 @@ function fixture() {
 }
 
 describe('bookFile', () => {
+  it('원본 사진·다듬기 마스크 참조도 새 id로 바뀐다', async () => {
+    const { book, assets } = fixture();
+    const el = book.items[0].elements[0] as ImageElement;
+    el.cleanup = { sourceAssetId: 's1', quad: null, strength: 0.4, maskAssetId: 'm1' };
+    const all = [...assets, mk('s1', book.id, 'source', 30), { ...mk('m1', book.id, 'cutout', 40), kind: 'mask' as const }];
+    const out = await importBookFile(await exportBookFile(book, all));
+    const got = (out.book.items[0].elements[0] as ImageElement).cleanup!;
+    const byId = new Map(out.assets.map((a) => [a.id, a]));
+    expect(byId.get(got.sourceAssetId)?.kind).toBe('source');
+    expect(byId.get(got.maskAssetId!)?.kind).toBe('mask');
+    expect(byId.get(got.maskAssetId!)?.blob.type).toBe('image/png');
+    expect(got.strength).toBe(0.4);
+  });
+
   it('가져오면 asset id가 새로 부여되고 참조가 모두 갱신된다', async () => {
     const { book, assets } = fixture();
     const out = await importBookFile(await exportBookFile(book, assets));

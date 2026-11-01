@@ -141,3 +141,72 @@ test('background photo can be dragged, zoomed and reset', async ({ page }) => {
   await page.getByRole('button', { name: '처음 위치로' }).click();
   await expect.poll(frame).toBeUndefined();
 });
+
+test('a placed drawing can be rotated, flipped, colour-tweaked and re-cleaned', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/');
+  await page.getByRole('button', { name: '새 책 만들기' }).click();
+  const setup = page.getByRole('dialog', { name: '새 책 만들기' });
+  await setup.getByLabel('책 제목').fill('그림 편집');
+  await setup.getByLabel('아이 이름').fill('하준');
+  await setup.getByRole('button', { name: '만들기' }).click();
+
+  await page.getByRole('button', { name: '그림 넣기' }).click();
+  const add = page.getByRole('dialog', { name: '그림 넣기' });
+  await add.getByTestId('cleanup-file').setInputFiles(DRAWING);
+  await add.getByRole('button', { name: '다음', exact: true }).click();
+  await add.getByRole('button', { name: '다음', exact: true }).click();
+  // one eraser stroke, which must survive the redo
+  const paint = (await add.locator('canvas.paint').boundingBox())!;
+  await page.mouse.move(paint.x + paint.width * 0.2, paint.y + paint.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(paint.x + paint.width * 0.4, paint.y + paint.height * 0.3, { steps: 5 });
+  await page.mouse.up();
+  await add.getByRole('button', { name: '완료' }).click();
+  await expect(add).toBeHidden();
+
+  const drawing = async () => (await readDb(page)).books[0]?.cover.front.elements.find((e: { kind: string }) => e.kind === 'image');
+  await expect.poll(async () => (await drawing())?.cleanup?.sourceAssetId).toBeTruthy();
+  const first = await drawing();
+  expect(first.cleanup.quad).toHaveLength(4);
+  expect(first.cleanup.maskAssetId).toBeTruthy();
+
+  await page.getByRole('button', { name: '↻ 오른쪽으로' }).click();
+  await page.getByRole('button', { name: '좌우 뒤집기' }).click();
+  await page.getByLabel(/^밝기/).fill('30');
+  await expect.poll(async () => {
+    const d = await drawing();
+    return d && { rotation: d.rotation, flipX: d.flipX, brightness: d.adjust?.brightness };
+  }).toEqual({ rotation: 90, flipX: true, brightness: 30 });
+
+  // Redo the paper removal from the saved original: opens straight at the paper step
+  const beforeRedo = await drawing();
+  await page.getByRole('button', { name: '배경 지우기 다시 하기' }).click();
+  const redo = page.getByRole('dialog', { name: '그림 배경 다시 지우기' });
+  await expect(redo.getByText('지우기 강도')).toBeVisible();
+  await redo.getByRole('button', { name: '다음', exact: true }).click();
+  await redo.getByRole('button', { name: '완료' }).click();
+  await expect(redo).toBeHidden();
+  await expect.poll(async () => (await drawing())?.assetId).not.toBe(first.assetId);
+  const after = await drawing();
+  expect(after.cleanup.sourceAssetId).toBe(first.cleanup.sourceAssetId); // the original is reused, not copied
+  expect(after.cleanup.maskAssetId).toBeTruthy(); // the saved brush strokes were restored and kept
+  const keep = (d: any) => ({ x: d.x, y: d.y, width: d.width, rotation: d.rotation, flipX: d.flipX, adjust: d.adjust });
+  expect(keep(after)).toEqual(keep(beforeRedo));
+
+  // Dragging a colour slider is one undo step
+  const slider = (await page.getByLabel(/^대비/).boundingBox())!;
+  await page.mouse.move(slider.x + slider.width / 2, slider.y + slider.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(slider.x + slider.width * 0.7, slider.y + slider.height / 2, { steps: 6 });
+  await page.mouse.move(slider.x + slider.width * 0.9, slider.y + slider.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(async () => (await drawing())?.adjust?.contrast).toBeGreaterThan(40);
+  await page.getByRole('heading', { name: '선택한 그림' }).click(); // move focus off the slider
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(async () => (await drawing())?.adjust?.contrast).toBe(0);
+  expect((await drawing()).adjust.brightness).toBe(30);
+  expect(errors).toEqual([]);
+});
